@@ -29,3 +29,20 @@
 **/.DS_Store
 **/Thumbs.db
 **/.vscode/
+
+# 忽略 HXL 和 RLF 后缀的文件
+**/*.hxl
+**/*.rlf
+
+# 忽略 VS Code 工作区文件
+**/*.code-workspace
+
+# 忽略所有压缩包
+**/*.rar
+**/*.zip
+**/*.7z
+
+# 忽略大部分 TXT 文件（保留关键的 README.txt 等）
+**/*.txt
+!**/README.txt
+!**/CHANGELOG.txt
