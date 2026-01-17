@@ -2,7 +2,7 @@
 #include "FT64F0AX.h"
 #include "EEPROM.h"
 // *************宏定义***************
-#define      LED_shining_Time       LED_Flow_T / 4
+#define LED_shining_Time LED_Flow_T / 4
 // *************变量定义*************
 //-------------LED模块变量------------
 unsigned int LED_Flow_Count = 0;
@@ -139,76 +139,130 @@ main()
 		// 已实现按键按下时控制
 		if (Speed_Flag_1ms)
 		{
-			Speed_Flag_1ms = 0;
-			if (PB0 == 0 && PB1 == 1)//变慢
+			if (PB0 == 0 && PB1 == 1)
 			{
-
-				Key_press_count++;
-				if (PB0 == 0 && (Key_press_count) >= 20) // 消抖
+				switch (Key_state)
 				{
-					Key_buffer++;
-
-					if (Key_buffer > 100)
+				case 0:
+					if (PB0 == 0 && PB1 == 1) // 检测到一个按下瞬间
 					{
-						Key_buffer = 0;
+						Key_press_count++;
+						if (Key_press_count > 20)
+						{
+							Key_press_count=0;
+							Key_state = 1;
+						}
+					}
+					else
+					{
+						break;
+					}
+					break;
+				case 1:
+					Key_press_count++;
+					if (Key_press_count > 50)
+					{
+						Key_press_count = 0;
+						Key_state = 2;
+					}
+					break;
+				case 2:
+					if (PB0 == 0)
+					{
 						LED_Flow_T += 40;
+						if (LED_Flow_T > 8000)
+						{
+							LED_Flow_T = 8000;
+						}
+						Key_state=1;
 					}
-					if (LED_Flow_T >= 8000)
+					else if (PB0 == 1) // 检测到松手
 					{
-						Key_buffer = 0;
-						LED_Flow_T = 8000;
+						Key_state = 0;
+						break;
 					}
+					break;
 				}
 			}
-			else if (PB1 == 0 && PB0 == 1)//变快
+			else if (PB0 == 1 && PB1 == 0)
 			{
-				Key_press_count++;
-				if (PB1 == 0 && Key_press_count >= 20) // 消抖
+				switch (Key_state)
 				{
-					Key_buffer++;
-					if (Key_buffer > 80)
+				case 0:
+					if (PB0 == 1 && PB1 == 0) // 检测到一个按下瞬间
 					{
-						Key_buffer = 0;
+						Key_press_count++;
+						if (Key_press_count > 20)
+						{
+							Key_press_count=0;
+							Key_state = 1;
+						}
+					}
+					else
+					{
+						Key_state = 0;
+						break;
+					}
+					break;
+				case 1:
+					Key_press_count++;
+					if (Key_press_count > 50)
+					{
+						Key_press_count = 0;
+						Key_state = 2;
+					}
+                    else
+					{
+					 break;
+                    }
+					break;
+				case 2:
+					if (PB1 == 0)
+					{
 						LED_Flow_T -= 40;
+						if (LED_Flow_T < 40)
+						{
+							LED_Flow_T = 40;
+						}
+						Key_state=1;
 					}
-					if (LED_Flow_T <= 80)
+					else if (PB1 == 1) // 检测到松手
 					{
-						Key_buffer = 0;
-						LED_Flow_T = 80;
+						Key_state = 0;
+						break;
 					}
+					break;
 				}
 			}
-
-			else if (PB1 == 0 && PB0 == 0)
+			else if(PB0==1&&PB1==1)
 			{
-				Key_press_count = 0;
+				EEPROM_H=LED_Flow_T/256;
+				EEPROM_L=LED_Flow_T%256;
+				EEPROM_Write(0x00,EEPROM_H);
+				EEPROM_Write(0x01,EEPROM_L);
 			}
-			else if (PB1 == 1 && PB0 == 1)
-			{
-				Key_press_count = 0;
-				EEPROM_H = LED_Flow_T / 256;
-				EEPROM_L = LED_Flow_T % 256;
-				EEPROM_Write(0x00, EEPROM_H);
-				EEPROM_Write(0x01, EEPROM_L);
-			}
+			Speed_Flag_1ms = 0;
 		}
+		
+	
 
-		// 已经验证可以实现T值控制流水灯Speed
-		if (LED_Flow_Count < (1 * (LED_shining_Time)) && LED_Flow_Count >= 0)
-		{
-			PORTA = 0B11101111;
-		}
-		else if (LED_Flow_Count < (2 * (LED_shining_Time)) && LED_Flow_Count >= (1 * (LED_shining_Time)))
-		{
-			PORTA = 0B11011111;
-		}
-		else if (LED_Flow_Count < (3 * (LED_shining_Time)) && LED_Flow_Count >= (2 * (LED_shining_Time)))
-		{
-			PORTA = 0B10111111;
-		}
-		else if (LED_Flow_Count < (4 * (LED_shining_Time)) && LED_Flow_Count >= (3 * (LED_shining_Time)))
-		{
-			PORTA = 0B01111111;
-		}
+	// 已经验证可以实现T值控制流水灯Speed
+	if (LED_Flow_Count < (1 * (LED_shining_Time)) && LED_Flow_Count >= 0)
+	{
+		PORTA = 0B11101111;
 	}
+	else if (LED_Flow_Count < (2 * (LED_shining_Time)) && LED_Flow_Count >= (1 * (LED_shining_Time)))
+	{
+		PORTA = 0B11011111;
+	}
+	else if (LED_Flow_Count < (3 * (LED_shining_Time)) && LED_Flow_Count >= (2 * (LED_shining_Time)))
+	{
+		PORTA = 0B10111111;
+	}
+	else if (LED_Flow_Count < (4 * (LED_shining_Time)) && LED_Flow_Count >= (3 * (LED_shining_Time)))
+	{
+		PORTA = 0B01111111;
+	}
+    }
 }
+
