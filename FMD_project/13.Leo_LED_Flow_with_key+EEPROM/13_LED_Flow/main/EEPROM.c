@@ -23,7 +23,7 @@ unsigned char EEPROM_Read(unsigned char addr)
  * 函数名：Unlock_Flash
  * 功能：  EEPROM写解锁（固定时序）
  --------------------------------------------------*/
-void Unlock_Flash()
+void Unlock_Flash(void)
 {
 #asm
     MOVLW 0x03;
@@ -33,8 +33,19 @@ void Unlock_Flash()
     MOVLW 0xAA;
     MOVWF _EECON2;
     BSF _EECON1, 1;
-    NOP; NOP;
+    NOP;
+    NOP;
 #endasm
+    //	#asm
+    //		MOVLW 0x03 ;
+    //        MOVWF _BSREG
+    //		MOVLW 0x55 MOVWF _EECON2 &
+    //		0x7F MOVLW 0xAA
+    //        MOVWF _EECON2 & 0x7F
+    //        BSF _EECON1 & 0x7F, 1 // WR=1;
+    //		NOP
+    //        NOP
+    //	#endasm
 }
 
 /*-------------------------------------------------

@@ -1,6 +1,6 @@
 #include "SYSCFG.h"
 #include "FT64F0AX.h"
-
+#include "EEPROM.h"
 // *************宏定义***************
 
 // *************变量定义*************
@@ -15,12 +15,19 @@ unsigned int Key_press_count = 0;
 unsigned char Key_state = 0;
 unsigned char Key_buffer = 0;
 
+//-------------EEPROM模块变量----------
+unsigned char EEPROM_H = 0;
+unsigned char EEPROM_L = 0;
+
 // ************函数声明区域************
 volatile char W_TMP @0x70;
 volatile char BSR_TMP @0x71;
 void user_isr();
 void POWER_INITIAL(void);
 void TIM1_INIT(void);
+unsigned char EEPROM_Read(unsigned char addr);
+void Unlock_Flash();
+void EEPROM_Write(unsigned char addr, unsigned char data);
 
 void interrupt ISR(void)
 {
@@ -123,9 +130,13 @@ main()
 {
 	POWER_INITIAL();
 	TIM1_INIT();
+	EEPROM_H = EEPROM_Read(0x00);
+	EEPROM_L = EEPROM_Read(0x01);
+	LED_Flow_T = EEPROM_H * 256 + EEPROM_L;
 
 	while (1)
 	{
+		// 已实现按键按下时控制
 		if (Speed_Flag_1ms)
 		{
 			Speed_Flag_1ms = 0;
@@ -139,7 +150,7 @@ main()
 
 					if (Key_buffer > 100)
 					{
-						Key_buffer =0 ;
+						Key_buffer = 0;
 						LED_Flow_T += 40;
 					}
 					if (LED_Flow_T >= 8000)
@@ -156,7 +167,7 @@ main()
 					Key_buffer++;
 					if (Key_buffer > 100)
 					{
-						Key_buffer =0 ;
+						Key_buffer = 0;
 						LED_Flow_T -= 40;
 					}
 					if (LED_Flow_T <= 80)
@@ -173,6 +184,10 @@ main()
 			else if (PB1 == 1 && PB0 == 1)
 			{
 				Key_press_count = 0;
+				EEPROM_H = LED_Flow_T / 256;
+				EEPROM_L = LED_Flow_T % 256;
+				EEPROM_Write(0x00, EEPROM_H);
+				EEPROM_Write(0x01, EEPROM_L);
 			}
 		}
 
