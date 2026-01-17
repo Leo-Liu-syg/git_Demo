@@ -5,11 +5,15 @@
 
 // *************变量定义*************
 //-------------LED模块变量------------
-unsigned int Time1_count = 0;
+unsigned int LED_Flow_Count = 0;
 unsigned char LED_Flowflag = 0;
+unsigned int LED_Flow_T = 1000;
+unsigned char Speed_Flag_1ms = 0;
 
 //-------------按键模块变量------------
 unsigned int Key_press_count = 0;
+unsigned char Key_state = 0;
+unsigned char Key_buffer = 0;
 
 // ************函数声明区域************
 volatile char W_TMP @0x70;
@@ -51,12 +55,16 @@ void user_isr() // 中断函数
 	if (TIM1SR1 & 0x01) // 检查更新中断标志位
 	{
 		TIM1SR1 |= 0x01; // 写1清除T1UIF
-		Time1_count++;
-		// Key_press_count++;
-		if (Time1_count > 2000)
+
+		// LED_Flow related
+		LED_Flow_Count++;
+		Speed_Flag_1ms = 1; // 每进一次中断置1一次1ms
+		if (LED_Flow_Count > LED_Flow_T)
 		{
-			Time1_count = 0;
+			LED_Flow_Count = 0;
 		}
+
+		// Key_press related
 	}
 }
 void POWER_INITIAL(void) // PB0 PB1输入，PA全部输出
@@ -118,40 +126,72 @@ main()
 
 	while (1)
 	{
-		// for (unsigned char i = 0; i < 4; i++)
-		// {
-		// 	if (Time1_count == 500)
-		// 	{
-		// 		PORTA = PORTA & (~(0B00000001 << i));
-		// 	}
-		// 	if (Time1_count == 1000)
-		// 	{
-		// 		PORTA = PORTA & (~(0B00000001 << i));
-		// 	}
-		// 	if (Time1_count == 1500)
-		// 	{
-		// 		PORTA = PORTA & (~(0B00000001 << i));
-		// 	}
-		// 	if (Time1_count == 2000)
-		// 	{
-		// 		PORTA = PORTA & (~(0B00000001 << i));
-		// 	}
-		// }
-		if (Time1_count < 500 && Time1_count >=0)
+		if (Speed_Flag_1ms)
 		{
-			PORTA=0B11101111;
+			Speed_Flag_1ms = 0;
+			if (PB0 == 0 && PB1 == 1)
+			{
+
+				Key_press_count++;
+				if (PB0 == 0 && (Key_press_count) >= 20) // 消抖
+				{
+					Key_buffer++;
+
+					if (Key_buffer > 100)
+					{
+						Key_buffer =0 ;
+						LED_Flow_T += 40;
+					}
+					if (LED_Flow_T >= 8000)
+					{
+						LED_Flow_T = 8000;
+					}
+				}
+			}
+			else if (PB1 == 0 && PB0 == 1)
+			{
+				Key_press_count++;
+				if (PB1 == 0 && Key_press_count >= 20) // 消抖
+				{
+					Key_buffer++;
+					if (Key_buffer > 100)
+					{
+						Key_buffer =0 ;
+						LED_Flow_T -= 40;
+					}
+					if (LED_Flow_T <= 80)
+					{
+						LED_Flow_T = 80;
+					}
+				}
+			}
+
+			else if (PB1 == 0 && PB0 == 0)
+			{
+				Key_press_count = 0;
+			}
+			else if (PB1 == 1 && PB0 == 1)
+			{
+				Key_press_count = 0;
+			}
 		}
-		else if (Time1_count < 1000 && Time1_count >=500)
+
+		// 已经验证可以实现T值控制流水灯Speed
+		if (LED_Flow_Count < (1 * (LED_Flow_T / 4)) && LED_Flow_Count >= 0)
 		{
-			PORTA=0B11011111;
+			PORTA = 0B11101111;
 		}
-		else if (Time1_count < 1500 && Time1_count >=1000)
+		else if (LED_Flow_Count < (2 * (LED_Flow_T / 4)) && LED_Flow_Count >= (1 * (LED_Flow_T / 4)))
 		{
-			PORTA=0B10111111;
+			PORTA = 0B11011111;
 		}
-		else if (Time1_count < 2000 && Time1_count >=1500)
+		else if (LED_Flow_Count < (3 * (LED_Flow_T / 4)) && LED_Flow_Count >= (2 * (LED_Flow_T / 4)))
 		{
-			PORTA=0B01111111;
+			PORTA = 0B10111111;
+		}
+		else if (LED_Flow_Count < (4 * (LED_Flow_T / 4)) && LED_Flow_Count >= (3 * (LED_Flow_T / 4)))
+		{
+			PORTA = 0B01111111;
 		}
 	}
 }
