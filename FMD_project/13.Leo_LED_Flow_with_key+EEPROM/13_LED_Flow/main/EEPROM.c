@@ -54,5 +54,3 @@ void EEPROM_Write(unsigned char addr, unsigned char data)
     WREN = 0;
     GIE = 1;
 }
-
-/*-------------------------------------------------
