@@ -2,7 +2,7 @@
 #include "FT64F0AX.h"
 #include "EEPROM.h"
 // *************宏定义***************
-
+#define      LED_shining_Time       LED_Flow_T / 4
 // *************变量定义*************
 //-------------LED模块变量------------
 unsigned int LED_Flow_Count = 0;
@@ -140,7 +140,7 @@ main()
 		if (Speed_Flag_1ms)
 		{
 			Speed_Flag_1ms = 0;
-			if (PB0 == 0 && PB1 == 1)
+			if (PB0 == 0 && PB1 == 1)//变慢
 			{
 
 				Key_press_count++;
@@ -155,23 +155,25 @@ main()
 					}
 					if (LED_Flow_T >= 8000)
 					{
+						Key_buffer = 0;
 						LED_Flow_T = 8000;
 					}
 				}
 			}
-			else if (PB1 == 0 && PB0 == 1)
+			else if (PB1 == 0 && PB0 == 1)//变快
 			{
 				Key_press_count++;
 				if (PB1 == 0 && Key_press_count >= 20) // 消抖
 				{
 					Key_buffer++;
-					if (Key_buffer > 100)
+					if (Key_buffer > 80)
 					{
 						Key_buffer = 0;
 						LED_Flow_T -= 40;
 					}
 					if (LED_Flow_T <= 80)
 					{
+						Key_buffer = 0;
 						LED_Flow_T = 80;
 					}
 				}
@@ -192,19 +194,19 @@ main()
 		}
 
 		// 已经验证可以实现T值控制流水灯Speed
-		if (LED_Flow_Count < (1 * (LED_Flow_T / 4)) && LED_Flow_Count >= 0)
+		if (LED_Flow_Count < (1 * (LED_shining_Time)) && LED_Flow_Count >= 0)
 		{
 			PORTA = 0B11101111;
 		}
-		else if (LED_Flow_Count < (2 * (LED_Flow_T / 4)) && LED_Flow_Count >= (1 * (LED_Flow_T / 4)))
+		else if (LED_Flow_Count < (2 * (LED_shining_Time)) && LED_Flow_Count >= (1 * (LED_shining_Time)))
 		{
 			PORTA = 0B11011111;
 		}
-		else if (LED_Flow_Count < (3 * (LED_Flow_T / 4)) && LED_Flow_Count >= (2 * (LED_Flow_T / 4)))
+		else if (LED_Flow_Count < (3 * (LED_shining_Time)) && LED_Flow_Count >= (2 * (LED_shining_Time)))
 		{
 			PORTA = 0B10111111;
 		}
-		else if (LED_Flow_Count < (4 * (LED_Flow_T / 4)) && LED_Flow_Count >= (3 * (LED_Flow_T / 4)))
+		else if (LED_Flow_Count < (4 * (LED_shining_Time)) && LED_Flow_Count >= (3 * (LED_shining_Time)))
 		{
 			PORTA = 0B01111111;
 		}
