@@ -44,7 +44,8 @@
 // -----------------------------数码管处理相关---------------------------
 unsigned char seg_code[] = {0x3F, 0x06, 0x5B, 0x4F, 0x66, 0x6D, 0x7D, 0x07, 0x7F, 0x6F}; // 0~9
 unsigned char led_place[] = {0x68, 0x6A, 0x6C, 0x6E};
-
+unsigned char tm1650_brightness[] = {0x11, 0x21, 0x31, 0x41, 0x51, 0x61, 0x71, 0x01}; // 亮度0~8
+unsigned char bright_level = 0x01;
 unsigned int Seg_Count = 0;
 unsigned char T_1sFlag = 0;
 unsigned int Number_Sum = 0;
@@ -64,7 +65,6 @@ volatile unsigned char EEReadData = 0xAA;
 unsigned char send_flag = 0;
 unsigned char init_send_done = 0;
 
-
 volatile unsigned char IICReadData;
 
 // -------------------函数声明---------------------
@@ -72,6 +72,7 @@ void user_isr(); // ????��???????????
 unsigned char EEPROMread(unsigned char EEAddr);
 void EEPROMwrite(unsigned char EEAddr, unsigned char Data);
 void UART_INITIAL(void);
+void TM1650_cfg_display(unsigned char param);
 
 void interrupt ISR(void)
 {
@@ -102,6 +103,7 @@ void interrupt ISR(void)
 }
 void user_isr() // ????????��????
 {
+	// 数码管计数
 	if (TIM1SR1 & 0x01) // 检查更新中断标志位
 	{
 		TIM1SR1 |= 0x01; // 写1清除T1UIF
@@ -116,32 +118,54 @@ void user_isr() // ????????��????
 		// Key_press related
 	}
 
+	// 串口相关
 	if (UR1RXNE && UR1RXNEF) // 串口接收from电脑
 	{
 		UR1RXNEF = 0;
 		EEReadData = UR1DATAL;
 		if (EEReadData == 0xAA)
 		{
-			EEReadData = EEPROMread(0x13); // 读原来的ROM
-								  
-			EEPROMwrite(0x13, EEReadData+1);		   // 写入ROM
-			
+			EEPROMwrite(0x15, Number_Sum); // 数码管数值写入ROM
+			send_flag = 1;
 		}
 		else if (EEReadData == 0xBB)
 		{
-			EEReadData = EEPROMread(0x13);						   // 自减
-			EEPROMwrite(0x13, EEReadData-1);		   // 写入ROM
-			 // ROM存入readdata
+			Number_Sum = EEPROMread(0x15);
+			send_flag = 1;
 		}
-        else if (EEReadData >= 0xff)
+		else if (EEReadData == 0xCC)
 		{
-			EEPROMwrite(0x13, 0x03);
+			if (bright_level < 7)
+			{
+				TM1650_cfg_display(tm1650_brightness[bright_level++]);
+				EEPROMwrite(0x14, bright_level);
+			}
+			else
+			{
+				TM1650_cfg_display(tm1650_brightness[0]);
+				EEPROMwrite(0x14, 0);
+			}
+			send_flag = 2;
+		}
+		else if (EEReadData == 0xDD)
+		{
+			if (bright_level > 0)
+			{
+				TM1650_cfg_display(tm1650_brightness[bright_level--]);
+				EEPROMwrite(0x14, bright_level);
+			}
+			else
+			{
+				TM1650_cfg_display(tm1650_brightness[7]);
+				EEPROMwrite(0x14, 7);
+			}
+			send_flag = 2;
 		}
 		else
-		{           
+		{
 			EEPROMwrite(0x13, EEReadData);
+			send_flag = 1;
 		}
-		send_flag = 1;
 	}
 
 	if (UR1TCEN && UR1TCF) // 串口发送回电脑
@@ -149,7 +173,13 @@ void user_isr() // ????????��????
 		UR1TCF = 0;
 		if (send_flag == 1)
 		{
-			senddata = EEPROMread(0x13);
+			senddata = EEPROMread(0x15);
+			UR1DATAL = senddata;
+			send_flag = 0;
+		}
+		if (send_flag == 2)
+		{
+			senddata = EEPROMread(0x14);
 			UR1DATAL = senddata;
 			send_flag = 0;
 		}
@@ -209,15 +239,15 @@ void TIM1_INIT(void) // 1ms进一次中断
 // ====================URAT init=======================
 void UART_INITIAL(void)
 {
-    PCKEN|=0B00100000;			//ʹ��UART1ģ��ʱ��
-    UR1IER=0B00100001;			//ʹ�ܷ�������ж�+���������ж�
-    UR1LCR=0B00000001;			//8λ���ݣ�1λֹͣλ������żУ��
-    UR1MCR=0B00011000;			//ʹ�ܷ��ͺͽ��սӿ�
-       
-    UR1DLL=52;					//16MHz��9600������
-    UR1DLH=0;  
-    UR1TCF=1;  // ɾ�����У���ʼ��ʱ������1��Ӳ�����Զ�����
-    INTCON=0B11000000;			//ʹ��ȫ��+�����ж�
+	PCKEN |= 0B00100000; // ʹ��UART1ģ��ʱ��
+	UR1IER = 0B00100001; // ʹ�ܷ�������ж�+���������ж�
+	UR1LCR = 0B00000001; // 8λ���ݣ�1λֹͣλ������żУ��
+	UR1MCR = 0B00011000; // ʹ�ܷ��ͺͽ��սӿ�
+
+	UR1DLL = 52; // 16MHz��9600������
+	UR1DLH = 0;
+	UR1TCF = 1;			 // ɾ�����У���ʼ��ʱ������1��Ӳ�����Զ�����
+	INTCON = 0B11000000; // ʹ��ȫ��+�����ж�
 }
 //====================== IIC ========================
 unsigned char IIC_Read(unsigned char address)
@@ -326,10 +356,11 @@ unsigned char TM1650_IIC_wait_ack(void)
 设置亮度并打开显示: TM1650_BRIGHTx  0x79
 关闭显示 TM1650_DSP_OFF 0x00
 ****************************************************/
-void TM1650_cfg_display(unsigned char param)
+void TM1650_cfg_display(unsigned char param) // 设置亮度
 {
 	I2C_Start_TM1650();
-	IIC_WrByte_TM1650(0x48);  // 设置系统参数命令
+	IIC_WrByte_TM1650(0x48); // 设置系统参数命令
+	TM1650_IIC_wait_ack();
 	IIC_WrByte_TM1650(param); // 系统参数设置
 }
 /***************************************************
@@ -383,21 +414,23 @@ void TM1650_Init(void)
 /*======================== main ==========================*/
 void main(void)
 {
-	POWER_INITIAL(); 
-
-	//-----数码管+定时器初始化------
-	TM1650_Init();
+	POWER_INITIAL();
 	TIM1_INIT();
-
 	//-----EEPROM初始化------------
 	EEPROMwrite(0x13, 0x55);	   // 0x55写入地址0x13
 	EEReadData = EEPROMread(0x13); // 芯片上电的时候把EEPROM 0x13房间里的内容通过串口显示出来
 
 	UART_INITIAL(); // 使能串口，目前来看必须在write弄完了之后再开启中断，否则会无法解锁
-	TDelay_ms(100);	// 延迟一会，等待串口ok
+	TDelay_ms(100); // 延迟一会，等待串口ok
 	UR1TCF = 0;
 	UR1DATAL = EEReadData;
 
+	//-----数码管初始化_读取EEPROM数值------
+	// bright_level = EEPROMread(0x14);
+	// TDelay_ms(5);
+	// TM1650_cfg_display(bright_level);
+	// TDelay_ms(5);
+	TM1650_Init ();
 	while (1)
 	{
 		// R_condition = 1;
@@ -405,6 +438,9 @@ void main(void)
 		if (T_1sFlag == 1 && Number_Sum < 10)
 		{
 			TM1650_Set(led_place[0], seg_code[Number_Sum]);
+			TM1650_Set(led_place[1], 0);
+			TM1650_Set(led_place[2], 0);
+			TM1650_Set(led_place[3], 0);
 			Number_Sum++;
 			T_1sFlag = 0;
 		}
@@ -414,23 +450,11 @@ void main(void)
 			Number_Shi = Number_Sum / 10;
 			TM1650_Set(led_place[0], seg_code[Number_Shi]);
 			TM1650_Set(led_place[1], seg_code[Number_Ge]);
+			TM1650_Set(led_place[2], 0);
+			TM1650_Set(led_place[3], 0);
 			Number_Sum++;
 			T_1sFlag = 0;
 		}
-		// else if (Seg_Count > 2000 && Seg_Count <= 3000)
-		// {
-		// 	TM1650_Set(led_place[0], seg_code[3]);
-		// 	TM1650_Set(led_place[1], seg_code[2]);
-		// 	TM1650_Set(led_place[2], seg_code[1]);
-		// 	TM1650_Set(led_place[3], seg_code[0]);
-		// }
-		// else if (Seg_Count > 3000 && Seg_Count <= 4000)
-		// {
-		// 	TM1650_Set(led_place[0], seg_code[3]);
-		// 	TM1650_Set(led_place[1], seg_code[2]);
-		// 	TM1650_Set(led_place[2], seg_code[1]);
-		// 	TM1650_Set(led_place[3], seg_code[0]);
-		// }
 		else
 		{
 		}
