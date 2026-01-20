@@ -1,4 +1,8 @@
-// Project: TEST_64F0Ax_IIC.prj
+// Project: 1.上电从0开始，一秒向上增加1
+// 2.串口接收到0xAA的时候，保存当前值到eeprom
+// 3.串口接收到0xBB的时候，设置当前值为eeprom值
+// 4.串口接收到0xCC的时候，亮度向上调高一档；接收到0xDD的时候亮度调低一档；
+// 5.亮度值要保存到eeprom，上电读取
 // Device:  FT64F0AX
 // Memory:  PROM=10Kx14, SRAM=1KB, EEPROM=128
 // Description: ??????????64F0Ax_IIC?????????.
@@ -20,8 +24,6 @@
 // VDD---------|9(VDD)		(PB3)12|------SCL
 // NC----------|10(PB5)		(PB4)11|------SDA
 //				-------------------
-//
-// *********************************************************
 
 #include "SYSCFG.h"
 #include "FT64F0AX.h"
@@ -37,8 +39,17 @@
 #define ACK_SAMPLE_RETRY 3	   // 采样次数    可以更改
 
 // LED处理相关
-unsigned char seg_code[] = {0x3F, 0x06, 0x5B, 0x4F, 0x66, 0x6D, 0x7D, 0x07, 0x7F, 0x6F};//0~9
+unsigned char seg_code[] = {0x3F, 0x06, 0x5B, 0x4F, 0x66, 0x6D, 0x7D, 0x07, 0x7F, 0x6F}; // 0~9
 unsigned char led_place[] = {0x68, 0x6A, 0x6C, 0x6E};
+
+// 计时器1相关
+unsigned int Seg_Count = 0;
+unsigned char T_1sFlag = 0;
+unsigned int Number_Sum = 0;
+unsigned int Number_Ge = 0;
+unsigned int Number_Shi = 0;
+unsigned int Number_Bai = 0;
+unsigned int Number_Qian = 0;
 
 volatile char W_TMP @0x70;	 // ????��?????????????
 volatile char BSR_TMP @0x71; // ????��?????????????
@@ -82,6 +93,19 @@ void interrupt ISR(void)
 }
 void user_isr() // ????????��????
 {
+	if (TIM1SR1 & 0x01) // 检查更新中断标志位
+	{
+		TIM1SR1 |= 0x01; // 写1清除T1UIF
+		Seg_Count++;
+		if (Seg_Count >= 999)
+		{
+			T_1sFlag = 1;
+			Seg_Count = 0;
+		}
+
+		// Speed_Flag_1ms = 1; // 每进一次中断置1一次1ms
+		// Key_press related
+	}
 }
 
 void POWER_INITIAL(void)
@@ -116,39 +140,32 @@ void POWER_INITIAL(void)
 
 	ANSELA = 0B00000000; // ????????IO?????IO
 }
+// ********************定时器1**************************
+void TIM1_INIT(void) // 1ms进一次中断
+{
+	PCKEN |= 0B00000010;  // 使能Timer1模块时钟
+	CKOCON = 0B00100000;  // 时钟输出配置（不影响中断，保持原配置）
+	TCKSRC |= 0B00000011; // Timer1时钟源=2x HIRC（32MHz）
 
-// void IIC_INITIAL(void)
-// {
+	// 配置预分频器（显式设置1分频，确保计数时钟=32MHz）
+	TIM1PSCRH = 0x00;
+	TIM1PSCRL = 0x00; // 预分频比=0x0000+1=1
 
-// 	PCKEN |= 0B01000000;  // ???I2C??????
-// 	ODCON0 |= 0B00000010; // I2C_SCL,I2C_SDA????????????????��
+	TIM1CR1 = 0B10000101; // 使能自动重载、边沿对齐、向上计数、使能计数器
+	TIM1IER = 0B00000001; // 使能更新中断
+	TIM1ARRH = 0x7C;	  // 自动重载值高8位（0x7CFF=31999）
+	TIM1ARRL = 0xFF;	  // 自动重载值低8位
+	INTCON = 0B11000000;  // 使能全局中断和外设中断
+}
 
-// 	I2CFREQ = 0B00010000; // ???????????16MHz
-
-// 	I2CCR1 = 0B00000001; // ???????????????100KHz????7��??????
-// 	I2CCR2 = 0B00000000;
-// 	I2CCR3 = 0B00000000;  // ????I2C??�????��???????????????????????????SCL???????
-// 	I2COARL = 0B01010000; // ??????
-// 	I2COARH = 0B00000000;
-
-// 	I2CCCRL = 0B01010000; // ??????��?SCL???????? ??????????/(2*CCR)
-// 	I2CCCRH = 0B00000000;
-// 	I2CITR = 0B00000000; // ?????????��?
-// 	ENABLE = 1;			 // ????I2C
-// }
-
-// us_Dealy
-void TDelay_us(unsigned char Rt_TM1650)
+// us_Dealy-1:3.622
+void TDelay_us(unsigned int Rt_TM1650) // 这个差不多是输入1，输出3.622的样子
 
 {
 	while (Rt_TM1650--)
-	{
-		NOP();
-		NOP();
-		NOP();
-	}
+		;
 }
-
+// ms 比较精确1：1
 void TDelay_ms(unsigned char Time)
 {
 	unsigned char a, b;
@@ -156,11 +173,11 @@ void TDelay_ms(unsigned char Time)
 	{
 		for (b = 0; b < 5; b++)
 		{
-			TDelay_us(197);
+			TDelay_us(545);
 		}
 	}
 }
-
+// 精确
 void TDelay_s(unsigned char Time)
 {
 	unsigned char a, b;
@@ -248,21 +265,6 @@ void I2C_Stop_TM1650(void)
 }
 
 // ====================== TM1650======================
-
-// void TM1650_DisplayNum(unsigned char pos, unsigned char num)
-// {
-// 	// 4��??????????????TM1650???�Z??
-// 	unsigned char disp_addr[] = {0x68, 0x6A, 0x6C, 0x6E};
-// 	if (pos < 1 || pos > 4 || num > 9)
-// 		return; // ?????
-
-// 	// ????????????????????????��???
-// 	IIC_Write(TM1650_WRITE_ADDR, disp_addr[pos - 1]);
-// 	TDelay_us(50);
-// 	// ?????????????????????
-// 	IIC_Write(TM1650_WRITE_ADDR, seg_code[num]);
-// }
-
 unsigned char TM1650_IIC_wait_ack(void)
 {
 	unsigned char ack_signal = 1; // 默认NACK
@@ -342,72 +344,6 @@ void TM1650_DisplayClose(void)
 	TM1650_cfg_display(0x81);
 	TRISB &= 0B00011000; // SCL SDA输入模式
 }
-/*-----------------------------------------------------------
-* 函数： LED_DEAL( )
-* 功能： 显示的处理函数，10ms执行一次
-* 输入： 无
-* 输出： 无
-------------------------------------------------------------*/
-void LED_DEAL(void) // 先初始化了亮度和显示才可以用
-{
-	if (R_condition != C_condition_OFF) // 开机,上电时软件置1
-	{
-		//==========================显示数据=====================================
-		I2C_Start_TM1650();
-		if (F_flash == 0)
-		{
-			if (R8_address == 0) // 个位
-			{
-				R8_led_place = led_place[0];		  // 这个要处理一下逻辑。LED——place代指什么--done
-				R8_led_seg = seg_code[1];			  // 1
-				TM1650_Set(R8_led_place, R8_led_seg); // 显示dig1
-				R8_address++;
-			}
-			else if (R8_address == 1) // 十位
-			{
-				R8_led_place = led_place[1];
-				if (seg_code[1] < 10)
-				{
-					R8_led_seg = 0x00;
-				}
-				else
-				{
-					R8_led_seg = seg_code[1]; // 2
-				}
-
-				TM1650_Set(R8_led_place, R8_led_seg); // 显示dig2
-				R8_address++;
-			}
-			else if (R8_address == 2) // 百位
-			{
-				R8_led_place = led_place[2];
-
-				if (seg_code[2] < 100)
-				{
-					R8_led_seg = 0x00;
-				}
-				else
-				{
-					R8_led_seg = seg_code[2]; // 3
-				}
-				TM1650_Set(R8_led_place, R8_led_seg); // 显示dig3
-				R8_address = 0;
-			}
-		}
-		else
-		{ // 关机
-			TM1650_DisplayClose();
-		}
-	}
-	else
-	{
-		//==========================数据=====================================
-		TM1650_DisplayClose(); // 关机
-
-		R8_address = 0;
-		F_flash = 0;
-	}
-}
 
 void TM1650_Init(void)
 {
@@ -421,15 +357,49 @@ void main(void)
 	POWER_INITIAL(); // ???????
 	// IIC_INITIAL();
 	TM1650_Init();
+	TIM1_INIT();
 	// TM1650_Init();	 // ??????TM1650????????????????
-
-	// ??????????1��???????1???????pos=2/3/4??num=0-9??
 	// TM1650_DisplayNum(1, 1);
 
 	while (1)
 	{
-		R_condition = 1;
-		LED_DEAL();
+		// R_condition = 1;
+
+		if (T_1sFlag == 1 && Number_Sum < 10)
+		{
+			TM1650_Set(led_place[0], seg_code[Number_Sum]);
+			Number_Sum++;
+			T_1sFlag = 0;
+		}
+		else if (T_1sFlag == 1 && (Number_Sum >= 10 && Number_Sum < 100))
+		{
+			Number_Ge = Number_Sum % 10;
+			Number_Shi = Number_Sum / 10;
+			TM1650_Set(led_place[0], seg_code[Number_Shi]);
+			TM1650_Set(led_place[1], seg_code[Number_Ge]);
+			Number_Sum++;
+			T_1sFlag = 0;
+		}
+		// else if (Seg_Count > 2000 && Seg_Count <= 3000)
+		// {
+		// 	TM1650_Set(led_place[0], seg_code[3]);
+		// 	TM1650_Set(led_place[1], seg_code[2]);
+		// 	TM1650_Set(led_place[2], seg_code[1]);
+		// 	TM1650_Set(led_place[3], seg_code[0]);
+		// }
+		// else if (Seg_Count > 3000 && Seg_Count <= 4000)
+		// {
+		// 	TM1650_Set(led_place[0], seg_code[3]);
+		// 	TM1650_Set(led_place[1], seg_code[2]);
+		// 	TM1650_Set(led_place[2], seg_code[1]);
+		// 	TM1650_Set(led_place[3], seg_code[0]);
+		// }
+		else
+		{
+		}
+		if (Number_Sum >= 100)
+		{
+			Number_Sum = 0;
+		}
 	}
 }
-
