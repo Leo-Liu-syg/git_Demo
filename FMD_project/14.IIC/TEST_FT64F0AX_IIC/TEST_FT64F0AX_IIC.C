@@ -27,7 +27,10 @@
 
 #include "SYSCFG.h"
 #include "FT64F0AX.h"
+#include "EEPROM.h"
+#include "TDelay.h"
 
+// **************************宏定义**************************************
 #define TM1650_WRITE_ADDR 0x48
 #define TM1650_CMD_DISP_ON 0x01 // 8级亮度，7段显示，开启显示使能（手册好像反了）
 #define TM1650_CMD_ADDR_BASE 0x68
@@ -38,11 +41,10 @@
 #define TM1650_ACK_DELAY 2	   // SCL上升沿后延时
 #define ACK_SAMPLE_RETRY 3	   // 采样次数    可以更改
 
-// LED处理相关
+// -----------------------------数码管处理相关---------------------------
 unsigned char seg_code[] = {0x3F, 0x06, 0x5B, 0x4F, 0x66, 0x6D, 0x7D, 0x07, 0x7F, 0x6F}; // 0~9
 unsigned char led_place[] = {0x68, 0x6A, 0x6C, 0x6E};
 
-// 计时器1相关
 unsigned int Seg_Count = 0;
 unsigned char T_1sFlag = 0;
 unsigned int Number_Sum = 0;
@@ -54,16 +56,23 @@ unsigned int Number_Qian = 0;
 volatile char W_TMP @0x70;	 // ????��?????????????
 volatile char BSR_TMP @0x71; // ????��?????????????
 
-volatile unsigned char R_condition = 0;
-volatile unsigned char C_condition_OFF = 0;
-volatile unsigned char F_flash = 0;
-volatile unsigned char R8_address = 0;
-volatile unsigned char R8_led;
-volatile unsigned char R8_led_place = 0;
-volatile unsigned char R8_led_seg = 0;
+// ------------------------------EEPROM相关-----------------------------
+volatile unsigned char receivedata = 0;
+volatile unsigned char sendaddress = 0;
+volatile unsigned char senddata = 0;
+volatile unsigned char EEReadData = 0xAA;
+unsigned char send_flag = 0;
+unsigned char init_send_done = 0;
+
 
 volatile unsigned char IICReadData;
+
+// -------------------函数声明---------------------
 void user_isr(); // ????��???????????
+unsigned char EEPROMread(unsigned char EEAddr);
+void EEPROMwrite(unsigned char EEAddr, unsigned char Data);
+void UART_INITIAL(void);
+
 void interrupt ISR(void)
 {
 #asm;			// ?????��?????????????
@@ -106,6 +115,45 @@ void user_isr() // ????????��????
 		// Speed_Flag_1ms = 1; // 每进一次中断置1一次1ms
 		// Key_press related
 	}
+
+	if (UR1RXNE && UR1RXNEF) // 串口接收from电脑
+	{
+		UR1RXNEF = 0;
+		EEReadData = UR1DATAL;
+		if (EEReadData == 0xAA)
+		{
+			EEReadData = EEPROMread(0x13); // 读原来的ROM
+								  
+			EEPROMwrite(0x13, EEReadData+1);		   // 写入ROM
+			
+		}
+		else if (EEReadData == 0xBB)
+		{
+			EEReadData = EEPROMread(0x13);						   // 自减
+			EEPROMwrite(0x13, EEReadData-1);		   // 写入ROM
+			 // ROM存入readdata
+		}
+        else if (EEReadData >= 0xff)
+		{
+			EEPROMwrite(0x13, 0x03);
+		}
+		else
+		{           
+			EEPROMwrite(0x13, EEReadData);
+		}
+		send_flag = 1;
+	}
+
+	if (UR1TCEN && UR1TCF) // 串口发送回电脑
+	{
+		UR1TCF = 0;
+		if (send_flag == 1)
+		{
+			senddata = EEPROMread(0x13);
+			UR1DATAL = senddata;
+			send_flag = 0;
+		}
+	}
 }
 
 void POWER_INITIAL(void)
@@ -126,7 +174,7 @@ void POWER_INITIAL(void)
 	WPDB = 0B00000000;
 	WPDC = 0B00000000;
 
-	TRISA = 0B00000000; // ????????????0-?????1-????
+	TRISA = 0B10000000; // PA7写入
 	TRISB = 0B00000000; // PB4:IIC-SDA PB3:IIC-SCL
 	TRISC = 0B00000000;
 
@@ -158,38 +206,19 @@ void TIM1_INIT(void) // 1ms进一次中断
 	INTCON = 0B11000000;  // 使能全局中断和外设中断
 }
 
-// us_Dealy-1:3.622
-void TDelay_us(unsigned int Rt_TM1650) // 这个差不多是输入1，输出3.622的样子
-
+// ====================URAT init=======================
+void UART_INITIAL(void)
 {
-	while (Rt_TM1650--)
-		;
+    PCKEN|=0B00100000;			//ʹ��UART1ģ��ʱ��
+    UR1IER=0B00100001;			//ʹ�ܷ�������ж�+���������ж�
+    UR1LCR=0B00000001;			//8λ���ݣ�1λֹͣλ������żУ��
+    UR1MCR=0B00011000;			//ʹ�ܷ��ͺͽ��սӿ�
+       
+    UR1DLL=52;					//16MHz��9600������
+    UR1DLH=0;  
+    UR1TCF=1;  // ɾ�����У���ʼ��ʱ������1��Ӳ�����Զ�����
+    INTCON=0B11000000;			//ʹ��ȫ��+�����ж�
 }
-// ms 比较精确1：1
-void TDelay_ms(unsigned char Time)
-{
-	unsigned char a, b;
-	for (a = 0; a < Time; a++)
-	{
-		for (b = 0; b < 5; b++)
-		{
-			TDelay_us(545);
-		}
-	}
-}
-// 精确
-void TDelay_s(unsigned char Time)
-{
-	unsigned char a, b;
-	for (a = 0; a < Time; a++)
-	{
-		for (b = 0; b < 10; b++)
-		{
-			TDelay_ms(100);
-		}
-	}
-}
-
 //====================== IIC ========================
 unsigned char IIC_Read(unsigned char address)
 {
@@ -354,12 +383,20 @@ void TM1650_Init(void)
 /*======================== main ==========================*/
 void main(void)
 {
-	POWER_INITIAL(); // ???????
-	// IIC_INITIAL();
+	POWER_INITIAL(); 
+
+	//-----数码管+定时器初始化------
 	TM1650_Init();
 	TIM1_INIT();
-	// TM1650_Init();	 // ??????TM1650????????????????
-	// TM1650_DisplayNum(1, 1);
+
+	//-----EEPROM初始化------------
+	EEPROMwrite(0x13, 0x55);	   // 0x55写入地址0x13
+	EEReadData = EEPROMread(0x13); // 芯片上电的时候把EEPROM 0x13房间里的内容通过串口显示出来
+
+	UART_INITIAL(); // 使能串口，目前来看必须在write弄完了之后再开启中断，否则会无法解锁
+	TDelay_ms(100);	// 延迟一会，等待串口ok
+	UR1TCF = 0;
+	UR1DATAL = EEReadData;
 
 	while (1)
 	{
