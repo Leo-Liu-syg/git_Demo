@@ -45,14 +45,14 @@
 unsigned char seg_code[] = {0x3F, 0x06, 0x5B, 0x4F, 0x66, 0x6D, 0x7D, 0x07, 0x7F, 0x6F}; // 0~9
 unsigned char led_place[] = {0x68, 0x6A, 0x6C, 0x6E};
 unsigned char tm1650_brightness[] = {0x11, 0x21, 0x31, 0x41, 0x51, 0x61, 0x71, 0x01}; // 亮度0~8
-unsigned char bright_level = 0x01;
-unsigned int Seg_Count = 0;
+volatile unsigned char bright_level = 0x01;
+volatile unsigned int Seg_Count = 0;
 unsigned char T_1sFlag = 0;
-unsigned int Number_Sum = 0;
-unsigned int Number_Ge = 0;
-unsigned int Number_Shi = 0;
-unsigned int Number_Bai = 0;
-unsigned int Number_Qian = 0;
+unsigned char Number_Sum = 0;
+unsigned char Number_Ge = 0;
+unsigned char Number_Shi = 0;
+unsigned char Number_Bai = 0;
+unsigned char Number_Qian = 0;
 
 volatile char W_TMP @0x70;	 // ????��?????????????
 volatile char BSR_TMP @0x71; // ????��?????????????
@@ -64,6 +64,7 @@ volatile unsigned char senddata = 0;
 volatile unsigned char EEReadData = 0xAA;
 unsigned char send_flag = 0;
 unsigned char init_send_done = 0;
+unsigned char EEPROM_state = 0;
 
 volatile unsigned char IICReadData;
 
@@ -125,46 +126,27 @@ void user_isr() // ????????��????
 		EEReadData = UR1DATAL;
 		if (EEReadData == 0xAA)
 		{
-			EEPROMwrite(0x15, Number_Sum); // 数码管数值写入ROM
+			EEPROM_state = 1;
 			send_flag = 1;
 		}
 		else if (EEReadData == 0xBB)
 		{
-			Number_Sum = EEPROMread(0x15);
+			EEPROM_state = 2;
 			send_flag = 1;
 		}
 		else if (EEReadData == 0xCC)
 		{
-			if (bright_level < 7)
-			{
-				TM1650_cfg_display(tm1650_brightness[bright_level++]);
-				EEPROMwrite(0x14, bright_level);
-			}
-			else
-			{
-				TM1650_cfg_display(tm1650_brightness[0]);
-				EEPROMwrite(0x14, 0);
-			}
+			EEPROM_state = 3;
 			send_flag = 2;
 		}
 		else if (EEReadData == 0xDD)
 		{
-			if (bright_level > 0)
-			{
-				TM1650_cfg_display(tm1650_brightness[bright_level--]);
-				EEPROMwrite(0x14, bright_level);
-			}
-			else
-			{
-				TM1650_cfg_display(tm1650_brightness[7]);
-				EEPROMwrite(0x14, 7);
-			}
+			EEPROM_state = 4;
 			send_flag = 2;
 		}
 		else
 		{
-			EEPROMwrite(0x13, EEReadData);
-			send_flag = 1;
+			send_flag = 0;
 		}
 	}
 
@@ -175,14 +157,13 @@ void user_isr() // ????????��????
 		{
 			senddata = EEPROMread(0x15);
 			UR1DATAL = senddata;
-			send_flag = 0;
 		}
-		if (send_flag == 2)
+		else if (send_flag == 2)
 		{
 			senddata = EEPROMread(0x14);
 			UR1DATAL = senddata;
-			send_flag = 0;
 		}
+		send_flag = 0;
 	}
 }
 
@@ -381,17 +362,7 @@ void TM1650_Set(unsigned char add, unsigned char dat) // 数码管显示
 
 	I2C_Stop_TM1650();
 }
-/***************************************************
-**函数名称：TM1650_DisplayOpen(void)
-**函数描述：数码管显示
-**输入    ：None
-**输出    ：None
-设置亮度并打开显示: TM1650_BRIGHTx  0x79
-****************************************************/
-void TM1650_DisplayOpen(void)
-{
-	TM1650_cfg_display(0x87);
-}
+
 /***************************************************
 **函数名称：TM1650_displayClose(void)
 **函数描述：数码管关闭显示
@@ -399,15 +370,9 @@ void TM1650_DisplayOpen(void)
 **输出    ：None
 关闭显示 TM1650_DSP_OFF 0x00
 ****************************************************/
-void TM1650_DisplayClose(void)
-{
-	TM1650_cfg_display(0x81);
-	TRISB &= 0B00011000; // SCL SDA输入模式
-}
 
 void TM1650_Init(void)
 {
-	// ??????????????0x8F???????+7???????
 	TM1650_Set(TM1650_WRITE_ADDR, TM1650_CMD_DISP_ON);
 	TDelay_ms(5); // ???????????��
 }
@@ -430,12 +395,12 @@ void main(void)
 	// TDelay_ms(5);
 	// TM1650_cfg_display(bright_level);
 	// TDelay_ms(5);
-	TM1650_Init ();
+	TM1650_Init();
 	while (1)
 	{
 		// R_condition = 1;
 
-		if (T_1sFlag == 1 && Number_Sum < 10)
+		if (T_1sFlag == 1 && Number_Sum < 10 && Number_Sum >= 0)
 		{
 			TM1650_Set(led_place[0], seg_code[Number_Sum]);
 			TM1650_Set(led_place[1], 0);
@@ -455,12 +420,59 @@ void main(void)
 			Number_Sum++;
 			T_1sFlag = 0;
 		}
-		else
-		{
-		}
-		if (Number_Sum >= 100)
+
+		if (Number_Sum < 0)
 		{
 			Number_Sum = 0;
+		}
+		else if (Number_Sum >= 100)
+		{
+			Number_Sum = 100;
+		}
+
+		switch (EEPROM_state)//
+		{
+		case 1:
+			EEPROMwrite(0x15, Number_Sum);
+			TM1650_cfg_display(tm1650_brightness[bright_level]);
+			EEPROM_state == 0;
+			break;
+		case 2:
+			Number_Sum = EEPROMread(0x15);
+			EEPROM_state == 0;
+			break;
+		case 3:
+			bright_level ++ ;
+			if (bright_level < 8 && bright_level >= 0)
+			{
+				TM1650_cfg_display(tm1650_brightness[bright_level]);
+				EEPROMwrite(0x14, bright_level);
+			}
+			else
+			{
+				TM1650_cfg_display(tm1650_brightness[0]);
+				EEPROMwrite(0x14, 0);
+				bright_level = 0;
+			}
+			EEPROM_state == 0;
+			break;
+		case 4:
+			bright_level--;
+			if (bright_level < 8 && bright_level >= 0)
+			{
+				TM1650_cfg_display(tm1650_brightness[bright_level]);
+				EEPROMwrite(0x14, bright_level);
+			}
+			else
+			{
+				TM1650_cfg_display(tm1650_brightness[7]);
+				EEPROMwrite(0x14, 7);
+				bright_level = 7;
+			}
+			EEPROM_state == 0;
+			break;
+		default:
+			break;
 		}
 	}
 }
