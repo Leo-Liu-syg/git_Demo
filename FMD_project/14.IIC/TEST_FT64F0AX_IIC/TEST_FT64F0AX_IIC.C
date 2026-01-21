@@ -44,15 +44,18 @@
 // -----------------------------数码管处理相关---------------------------
 unsigned char seg_code[] = {0x3F, 0x06, 0x5B, 0x4F, 0x66, 0x6D, 0x7D, 0x07, 0x7F, 0x6F}; // 0~9
 unsigned char led_place[] = {0x68, 0x6A, 0x6C, 0x6E};
-unsigned char tm1650_brightness[] = {0x11, 0x21, 0x31, 0x41, 0x51, 0x61, 0x71, 0x01}; // 亮度0~8
-volatile unsigned char bright_level = 0x01;
-volatile unsigned int Seg_Count = 0;
+
+unsigned char Brightness[] = {0x00, 0x11, 0x21, 0x31, 0x41, 0x51, 0x61, 0x71, 0x01};
+unsigned char B_Seg_Level = 0;
+unsigned char B_Seg_flag = 0;
+
+unsigned int Seg_Count = 0;
 unsigned char T_1sFlag = 0;
-unsigned char Number_Sum = 0;
-unsigned char Number_Ge = 0;
-unsigned char Number_Shi = 0;
-unsigned char Number_Bai = 0;
-unsigned char Number_Qian = 0;
+unsigned int Number_Sum = 0;
+unsigned int Number_Ge = 0;
+unsigned int Number_Shi = 0;
+unsigned int Number_Bai = 0;
+unsigned int Number_Qian = 0;
 
 volatile char W_TMP @0x70;	 // ????��?????????????
 volatile char BSR_TMP @0x71; // ????��?????????????
@@ -64,7 +67,6 @@ volatile unsigned char senddata = 0;
 volatile unsigned char EEReadData = 0xAA;
 unsigned char send_flag = 0;
 unsigned char init_send_done = 0;
-unsigned char EEPROM_state = 0;
 
 volatile unsigned char IICReadData;
 
@@ -73,7 +75,6 @@ void user_isr(); // ????��???????????
 unsigned char EEPROMread(unsigned char EEAddr);
 void EEPROMwrite(unsigned char EEAddr, unsigned char Data);
 void UART_INITIAL(void);
-void TM1650_cfg_display(unsigned char param);
 
 void interrupt ISR(void)
 {
@@ -104,7 +105,6 @@ void interrupt ISR(void)
 }
 void user_isr() // ????????��????
 {
-	// 数码管计数
 	if (TIM1SR1 & 0x01) // 检查更新中断标志位
 	{
 		TIM1SR1 |= 0x01; // 写1清除T1UIF
@@ -119,35 +119,60 @@ void user_isr() // ????????��????
 		// Key_press related
 	}
 
-	// 串口相关
 	if (UR1RXNE && UR1RXNEF) // 串口接收from电脑
 	{
 		UR1RXNEF = 0;
 		EEReadData = UR1DATAL;
+		// 数字存入+读取
 		if (EEReadData == 0xAA)
 		{
-			EEPROM_state = 1;
-			send_flag = 1;
+			EEPROMwrite(0x14, Number_Sum);
 		}
 		else if (EEReadData == 0xBB)
 		{
-			EEPROM_state = 2;
-			send_flag = 1;
+			Number_Sum = EEPROMread(0x14);
 		}
+
+		// 亮度调节
 		else if (EEReadData == 0xCC)
 		{
-			EEPROM_state = 3;
-			send_flag = 2;
+			if (B_Seg_Level < 8 && B_Seg_Level >= 0)
+			{
+				B_Seg_Level++;
+			}
+			else
+			{
+				B_Seg_Level = 7;
+			}
+			EEPROMwrite(0x15, B_Seg_Level);
+			B_Seg_flag = 1;
 		}
 		else if (EEReadData == 0xDD)
 		{
-			EEPROM_state = 4;
-			send_flag = 2;
+			if (B_Seg_Level <= 8 && B_Seg_Level > 0)
+			{
+				B_Seg_Level--;
+			}
+			else
+			{
+				B_Seg_Level = 0;
+			}
+
+			EEPROMwrite(0x15, B_Seg_Level);
+			B_Seg_flag = 1;
+		}
+
+		// 垃圾文件舍不得删
+		else if (EEReadData >= 0xff)
+		{
+			EEPROMwrite(0x13, 0x03);
 		}
 		else
 		{
-			send_flag = 0;
+			EEPROMwrite(0x13, EEReadData);
 		}
+
+		send_flag = 1;
 	}
 
 	if (UR1TCEN && UR1TCF) // 串口发送回电脑
@@ -155,15 +180,10 @@ void user_isr() // ????????��????
 		UR1TCF = 0;
 		if (send_flag == 1)
 		{
-			senddata = EEPROMread(0x15);
-			UR1DATAL = senddata;
-		}
-		else if (send_flag == 2)
-		{
 			senddata = EEPROMread(0x14);
 			UR1DATAL = senddata;
+			send_flag = 0;
 		}
-		send_flag = 0;
 	}
 }
 
@@ -337,12 +357,14 @@ unsigned char TM1650_IIC_wait_ack(void)
 设置亮度并打开显示: TM1650_BRIGHTx  0x79
 关闭显示 TM1650_DSP_OFF 0x00
 ****************************************************/
-void TM1650_cfg_display(unsigned char param) // 设置亮度
+void TM1650_cfg_display(unsigned char param)
 {
 	I2C_Start_TM1650();
 	IIC_WrByte_TM1650(0x48); // 设置系统参数命令
 	TM1650_IIC_wait_ack();
 	IIC_WrByte_TM1650(param); // 系统参数设置
+	TM1650_IIC_wait_ack();
+	I2C_Stop_TM1650();
 }
 /***************************************************
 **函数名称：TM1650_Set(unsigned char  add,unsigned char dat)
@@ -362,7 +384,17 @@ void TM1650_Set(unsigned char add, unsigned char dat) // 数码管显示
 
 	I2C_Stop_TM1650();
 }
-
+/***************************************************
+**函数名称：TM1650_DisplayOpen(void)
+**函数描述：数码管显示
+**输入    ：None
+**输出    ：None
+设置亮度并打开显示: TM1650_BRIGHTx  0x79
+****************************************************/
+void TM1650_DisplayOpen(void)
+{
+	TM1650_cfg_display(0x87);
+}
 /***************************************************
 **函数名称：TM1650_displayClose(void)
 **函数描述：数码管关闭显示
@@ -370,9 +402,15 @@ void TM1650_Set(unsigned char add, unsigned char dat) // 数码管显示
 **输出    ：None
 关闭显示 TM1650_DSP_OFF 0x00
 ****************************************************/
+void TM1650_DisplayClose(void)
+{
+	TM1650_cfg_display(0x81);
+	TRISB &= 0B00011000; // SCL SDA输入模式
+}
 
 void TM1650_Init(void)
 {
+	// ??????????????0x8F???????+7???????
 	TM1650_Set(TM1650_WRITE_ADDR, TM1650_CMD_DISP_ON);
 	TDelay_ms(5); // ???????????��
 }
@@ -380,27 +418,28 @@ void TM1650_Init(void)
 void main(void)
 {
 	POWER_INITIAL();
+
+	//-----数码管+定时器初始化------
+	TM1650_Init();
 	TIM1_INIT();
+
 	//-----EEPROM初始化------------
 	EEPROMwrite(0x13, 0x55);	   // 0x55写入地址0x13
 	EEReadData = EEPROMread(0x13); // 芯片上电的时候把EEPROM 0x13房间里的内容通过串口显示出来
+	Number_Sum = EEPROMread(0x14); //读取数字
+	B_Seg_Level =EEPROMread(0x15); //读取亮度
+	TM1650_cfg_display(Brightness[B_Seg_Level]);
 
 	UART_INITIAL(); // 使能串口，目前来看必须在write弄完了之后再开启中断，否则会无法解锁
 	TDelay_ms(100); // 延迟一会，等待串口ok
 	UR1TCF = 0;
 	UR1DATAL = EEReadData;
 
-	//-----数码管初始化_读取EEPROM数值------
-	// bright_level = EEPROMread(0x14);
-	// TDelay_ms(5);
-	// TM1650_cfg_display(bright_level);
-	// TDelay_ms(5);
-	TM1650_Init();
 	while (1)
 	{
 		// R_condition = 1;
 
-		if (T_1sFlag == 1 && Number_Sum < 10 && Number_Sum >= 0)
+		if (T_1sFlag == 1 && Number_Sum < 10)
 		{
 			TM1650_Set(led_place[0], seg_code[Number_Sum]);
 			TM1650_Set(led_place[1], 0);
@@ -417,62 +456,23 @@ void main(void)
 			TM1650_Set(led_place[1], seg_code[Number_Ge]);
 			TM1650_Set(led_place[2], 0);
 			TM1650_Set(led_place[3], 0);
+
 			Number_Sum++;
 			T_1sFlag = 0;
 		}
+		else
+		{
+		}
+		// 调节亮度
+		if (B_Seg_flag == 1)
+		{
+			TM1650_cfg_display(Brightness[B_Seg_Level]);
+			B_Seg_flag = 0;
+		}
 
-		if (Number_Sum < 0)
+		if (Number_Sum >= 100)
 		{
 			Number_Sum = 0;
-		}
-		else if (Number_Sum >= 100)
-		{
-			Number_Sum = 100;
-		}
-
-		switch (EEPROM_state)//
-		{
-		case 1:
-			EEPROMwrite(0x15, Number_Sum);
-			TM1650_cfg_display(tm1650_brightness[bright_level]);
-			EEPROM_state == 0;
-			break;
-		case 2:
-			Number_Sum = EEPROMread(0x15);
-			EEPROM_state == 0;
-			break;
-		case 3:
-			bright_level ++ ;
-			if (bright_level < 8 && bright_level >= 0)
-			{
-				TM1650_cfg_display(tm1650_brightness[bright_level]);
-				EEPROMwrite(0x14, bright_level);
-			}
-			else
-			{
-				TM1650_cfg_display(tm1650_brightness[0]);
-				EEPROMwrite(0x14, 0);
-				bright_level = 0;
-			}
-			EEPROM_state == 0;
-			break;
-		case 4:
-			bright_level--;
-			if (bright_level < 8 && bright_level >= 0)
-			{
-				TM1650_cfg_display(tm1650_brightness[bright_level]);
-				EEPROMwrite(0x14, bright_level);
-			}
-			else
-			{
-				TM1650_cfg_display(tm1650_brightness[7]);
-				EEPROMwrite(0x14, 7);
-				bright_level = 7;
-			}
-			EEPROM_state == 0;
-			break;
-		default:
-			break;
 		}
 	}
 }
