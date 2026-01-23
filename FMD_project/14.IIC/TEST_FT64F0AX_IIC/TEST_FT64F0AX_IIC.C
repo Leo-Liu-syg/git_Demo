@@ -163,11 +163,6 @@ void user_isr() // ????????��????
 			B_Seg_flag = 1;
 		}
 
-		// 垃圾文件舍不得删
-		else if (EEReadData >= 0xff)
-		{
-			EEPROMwrite(0x13, 0x03);
-		}
 		else
 		{
 			EEPROMwrite(0x13, EEReadData);
@@ -206,8 +201,8 @@ void POWER_INITIAL(void)
 	WPDB = 0B00000000;
 	WPDC = 0B00000000;
 
-	TRISA = 0B10000000; // PA7写入
-	TRISB = 0B00000000; // PB4:IIC-SDA PB3:IIC-SCL
+	TRISA |= 0B00000000; // PA7写入
+	TRISB |= 0B00000000; // PB4:IIC-SDA PB3:IIC-SCL
 	TRISC = 0B00000000;
 
 	PSRC0 = 0B11111111; // ????????????
@@ -315,7 +310,6 @@ void I2C_Start_TM1650(void)
 void I2C_Stop_TM1650(void)
 {
 	TRISB &= 0B00000000; // SDA SCL设置为输出模式
-
 	SCL = 0;
 	SDA = 0; // 保证数据线为低电平
 	TDelay_us(2);
