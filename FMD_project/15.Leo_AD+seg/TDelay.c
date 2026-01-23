@@ -1,6 +1,9 @@
 #include "SYSCFG.h"
 #include "FT64F0AX.h"
 
+#define		uchar	unsigned char
+#define		uint	unsigned int
+#define		ulong	unsigned long
 // us_Dealy-1:3.622
 void TDelay_us(unsigned int Rt_TM1650) // 这个差不多是输入1，输出3.622的样子
 {
@@ -31,4 +34,38 @@ void TDelay_s(unsigned char Time)
 		}
 	}
 }
+void Delay10Us(void)
+{
+	for(uchar i=0;i<2;i++)
+	{
+		NOP(); 
+		NOP();
+ 		NOP(); 
+		NOP(); 
+		NOP(); 
+		NOP();   
+ 		NOP(); 
+		NOP();  
+		NOP(); 
+		NOP();                                                                                        
+	}
+}
+void Delay450Us(void)
+{
+	for(uchar i=0;i<41;i++)
+	{
+		Delay10Us();
+	}
+}
+
+ void DelayMs(uchar Time)
+ {
+	for(uint a=0;a<Time;a++)
+	{
+		for(uchar b=0;b<96;b++)
+		{
+		 	Delay10Us(); 	
+		}
+	}
+ }
 

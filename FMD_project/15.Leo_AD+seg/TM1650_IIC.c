@@ -36,7 +36,7 @@ void IIC_WrByte_TM1650(unsigned char txd)
 }
 void I2C_Start_TM1650(void)
 {
-	TRISB &= 0B00000000; // 将SDA SCL设置为输出模式
+	// TRISB &= 0B00000000; // 将SDA SCL设置为输出模式
 	SDA = 1;
 	SCL = 1;
 	TDelay_us(5); // 建立时间是 SDA 保持时间>4.7us
@@ -53,7 +53,7 @@ void I2C_Start_TM1650(void)
 ****************************************************/
 void I2C_Stop_TM1650(void)
 {
-	TRISB &= 0B00000000; // SDA SCL设置为输出模式
+	// TRISB &= 0B00000000; // SDA SCL设置为输出模式
 	SCL = 0;
 	SDA = 0; // 保证数据线为低电平
 	TDelay_us(2);
