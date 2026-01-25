@@ -47,21 +47,18 @@
 unsigned char seg_code[] = {0x3F, 0x06, 0x5B, 0x4F, 0x66, 0x6D, 0x7D, 0x07, 0x7F, 0x6F}; // 0~9
 unsigned char led_place[] = {0x68, 0x6A, 0x6C, 0x6E};
 
-
 unsigned int Number_Sum = 0;
 unsigned int Number_Ge = 0;
 unsigned int Number_Shi = 0;
 unsigned int Number_Bai = 0;
 unsigned int Number_Qian = 0;
 
-// ADC
-volatile unsigned int adcData = 0;
-volatile unsigned int theVoltage = 0;
+// Timer1
+unsigned int debounce_count = 0;
 
 // Variable definition
 volatile char W_TMP @0x70;	 // �0�3�0�1�0�8�1�7���1�7�1�7�1�7�1�7�1�7�0�1�1�7�1�7�1�7�1�7�1�7�1�0�1�7
 volatile char BSR_TMP @0x71; // �0�3�0�1�0�8�1�7���1�7�1�7�1�7�1�7�1�7�0�1�1�7�1�7�1�7�1�7�1�7�1�0�1�7
-
 
 void user_isr();
 //===========================================================
@@ -159,10 +156,10 @@ void main(void)
 		Number_Bai = (Number_Sum / 10) % 10;
 		Number_Qian = Number_Sum % 10;
 
-		TM1650_Set(led_place[0], (seg_code[Number_Ge]|0x80));//小数点
-		TM1650_Set(led_place[1], seg_code[Number_Shi]);
-		TM1650_Set(led_place[2], seg_code[Number_Bai]);
-		TM1650_Set(led_place[3], seg_code[Number_Qian]);
+		TM1650_Set(led_place[3], seg_code[Number_Ge]);
+		TM1650_Set(led_place[2], seg_code[Number_Shi]);
+		TM1650_Set(led_place[1], seg_code[Number_Bai]);
+		TM1650_Set(led_place[0], seg_code[Number_Qian]);
 
 		NOP();
 		NOP();
