@@ -26,6 +26,7 @@
 #define EC11_A PA7
 #define EC11_B PA6
 
+
 // 数码管变量定义
 unsigned char seg_code[] = {0x3F, 0x06, 0x5B, 0x4F, 0x66, 0x6D, 0x7D, 0x07, 0x7F, 0x6F}; // 0~9
 unsigned char led_place[] = {0x68, 0x6A, 0x6C, 0x6E};
@@ -38,7 +39,8 @@ unsigned int Number_Qian = 0;
 
 unsigned char i = 0;
 
-
+// 风扇
+unsigned char Fan_Count = 0;
 
 // 编码器相关变量
 uchar EC11_State_Old = 0;	 // 编码器上一次状态（A/B相组合）
@@ -227,12 +229,28 @@ void main(void)
 	EC11_State_Old = EC11_Read_State();
 	while (1)
 	{
-		// 旋钮控制数据
 
 		if (flag_1ms == 1) // 一秒进来执行一次
 		{
+			// 旋钮控制数据
 			EC11_Process();
 			flag_1ms = 0;
+
+			// 风扇转速
+			Fan_Count++;
+			if(Fan_Count>Number_Sum)
+			{
+				PA0=1;//风扇转；
+			}
+			else if(Fan_Count<=Number_Sum)
+			{
+				PA0=0;
+			}
+			
+			if (Fan_Count > 99)
+			{
+					Fan_Count=0;
+			}
 		}
 
 		// 数据处理，显示在数码管
@@ -254,6 +272,8 @@ void main(void)
 			TM1650_Set(led_place[2], 0);
 			TM1650_Set(led_place[3], 0);
 		}
+
+		// 风扇转速
 	}
 }
 //===========================================================
