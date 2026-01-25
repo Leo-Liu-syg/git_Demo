@@ -23,6 +23,9 @@
 #define SCL PB3
 #define SDA PB4
 
+#define EC11_A PA7
+#define EC11_B PA6
+
 // 数码管变量定义
 unsigned char seg_code[] = {0x3F, 0x06, 0x5B, 0x4F, 0x66, 0x6D, 0x7D, 0x07, 0x7F, 0x6F}; // 0~9
 unsigned char led_place[] = {0x68, 0x6A, 0x6C, 0x6E};
@@ -35,11 +38,7 @@ unsigned int Number_Qian = 0;
 
 unsigned char i = 0;
 
-// EC11旋转
-unsigned char Last_PA0 = 0;
-unsigned char Current_PA0 = 0;
-unsigned char Last_PA1 = 0;
-unsigned char Current_PA1 = 0;
+
 
 // 编码器相关变量
 uchar EC11_State_Old = 0;	 // 编码器上一次状态（A/B相组合）
@@ -113,7 +112,7 @@ void POWER_INITIAL(void)
 	PORTB = 0B00000000;
 	PORTC = 0B00000000;
 
-	WPUA |= 0B00000011; // PA1/PA2（编码器）使能弱上拉 // 弱上拉的开关，0-关，1-开
+	WPUA |= 0B11000000; // EC11_A/EC11_B（编码器）使能弱上拉 // 弱上拉的开关，0-关，1-开
 	WPUB = 0B00000000;
 	WPUC = 0B00000000;
 
@@ -121,7 +120,7 @@ void POWER_INITIAL(void)
 	WPDB = 0B00000000;
 	WPDC = 0B00000000;
 
-	TRISA = 0B00000011; // 输入输出设置，0-输出，1-输入 修改为PA3、PA4为输入
+	TRISA = 0B11000000; // 输入输出设置，0-输出，1-输入 修改为EC11_A、EC11_B为输入
 	TRISB = 0B00000010; // PB1输入
 	TRISC = 0B00000000;
 
@@ -159,10 +158,10 @@ void TIM1_INITIAL(void)
 uchar EC11_Read_State(void)
 {
 	uchar state = 0;
-	if (PA1)
-		state |= 0x02; // PA1=A相
-	if (PA0)
-		state |= 0x01; // PA0=B相
+	if (EC11_B)
+		state |= 0x02; // EC11_B=A相
+	if (EC11_A)
+		state |= 0x01; // EC11_A=B相
 	return state;
 }
 
@@ -229,8 +228,7 @@ void main(void)
 	while (1)
 	{
 		// 旋钮控制数据
-		Current_PA0 = PA0;
-		Current_PA1 = PA1;
+
 		if (flag_1ms == 1) // 一秒进来执行一次
 		{
 			EC11_Process();
@@ -238,14 +236,6 @@ void main(void)
 		}
 
 		// 数据处理，显示在数码管
-		if (Number_Sum >= 100) // 越界判断
-		{
-			Number_Sum = 99;
-		}
-		else if (Number_Sum <= 0) // 越界判断
-		{
-			Number_Sum = 0;
-		}
 
 		Number_Ge = Number_Sum % 10;
 		Number_Shi = Number_Sum / 10;
