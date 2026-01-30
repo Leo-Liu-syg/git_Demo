@@ -17,6 +17,8 @@
 volatile char W_TMP  @ 0x70 ;//系统占用不可以删除和修改
 volatile char BSR_TMP  @ 0x71 ;//系统占用不可以删除和修改
 void user_isr();//用户中断程序，不可删除
+void Delay10Us(void);
+void DelayMs(unsigned char Time);
 //===========================================================
 
 //===========================================================
@@ -73,7 +75,7 @@ void POWER_INITIAL(void)
 	PORTB = 0B00000000;
 	PORTC = 0B00000000;
 
-	WPUA |= 0B11110000; // EC11_A/EC11_B（编码器）使能弱上拉 // 弱上拉的开关，0-关，1-开
+	WPUA |= 0B00000000; // EC11_A/EC11_B（编码器）使能弱上拉 // 弱上拉的开关，0-关，1-开
 	WPUB = 0B00000000;
 	WPUC = 0B00000000;
 
@@ -81,7 +83,7 @@ void POWER_INITIAL(void)
 	WPDB = 0B00000000;
 	WPDC = 0B00000000;
 
-	TRISA = 0B11110000; // 输入输出设置，0-输出，1-输入 修改为EC11_A、EC11_B为输入
+	TRISA = 0B00000000; // 输入输出设置，0-输出，1-输入 修改为EC11_A、EC11_B为输入
 	TRISB = 0B00000010; // PB1输入
 	TRISC = 0B00000000;
 
@@ -115,20 +117,60 @@ void TIM1_INITIAL(void)
 //parameters：无
 //returned value：无
 //===========================================================
+void Delay10Us(void)
+{
+	for(unsigned char i=0;i<2;i++)
+	{
+		NOP(); 
+		NOP();
+ 		NOP(); 
+		NOP(); 
+		NOP(); 
+		NOP();   
+ 		NOP(); 
+		NOP();  
+		NOP(); 
+		NOP();                                                                                        
+	}
+}
+ void DelayMs(unsigned char Time)
+ {
+	for(unsigned int a=0;a<Time;a++)
+	{
+		for(unsigned b=0;b<96;b++)
+		{
+		 	Delay10Us(); 	
+		}
+	}
+ }
 main()
 {
 	POWER_INITIAL();
     
 	while(1)
     {
-		if (Key_A == 1 && Key_B == 1)
-		{
-			PA1 = 0;
-		}
-		if (Key_A == 0 || Key_B == 0)
-		{
-			PA1 = 1;
-		}
+			//步进电机测试
+        PA0=1;
+        PA1=0;
+        PA4=0;
+        PA5=0;
+        DelayMs(1);
+        PA0=0;
+        PA1=1;
+        PA4=0;
+        PA5=0;
+        DelayMs(1);
+        PA0=0;
+        PA1=0;
+        PA4=1;
+        PA5=0;
+        DelayMs(1);
+        PA0=0;
+        PA1=0;
+        PA4=0;
+        PA5=1;
+        DelayMs(1);
+        
     }
 }
 //===========================================================

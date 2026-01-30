@@ -26,8 +26,8 @@
 #define EC11_A PA7
 #define EC11_B PA6
 
-#define Key_A PA4
-#define Key_B PA5
+#define Key_A PA0
+#define Key_B PA1
 
 #define LED PA1
 
@@ -36,6 +36,7 @@ unsigned char seg_code[] = {0x3F, 0x06, 0x5B, 0x4F, 0x66, 0x6D, 0x7D, 0x07, 0x7F
 unsigned char led_place[] = {0x68, 0x6A, 0x6C, 0x6E};
 
 unsigned int Number_Sum = 0;
+unsigned int Number_Sum_Old = 0;
 unsigned int Number_Ge = 0;
 unsigned int Number_Shi = 0;
 unsigned int Number_Bai = 0;
@@ -48,14 +49,19 @@ unsigned char LED_PWM_Mid = 0;
 unsigned char Breath_Flag1 = 0;
 
 // 按键扫描消抖
-unsigned char Key_Scan_flag = 0;
+unsigned char Motor_flag = 0;
 unsigned char key_statue_buffer = 0;
 unsigned char key_statue = 0;
 unsigned char key_count = 0;
 unsigned char PWM_count = 0;
 
-// 风扇
-unsigned char Fan_Count = 0;
+// 步进电机 IO: 0 1 4 5
+unsigned char P_Motor[4][4] = {{1, 0, 0, 0}, {0, 1, 0, 0}, {0, 0, 1, 0}, {0, 0, 0, 1}}; // 正转
+unsigned char N_Motor[4][4] = {{0, 0, 0, 1}, {0, 0, 1, 0}, {0, 1, 0, 0}, {1, 0, 0, 0}}; // 反转
+unsigned char i_P_Current;
+unsigned char i_P_Old;
+unsigned char Motor_Tick = 0;
+unsigned int Motor_T = 0;
 
 // 编码器相关变量
 unsigned char EC11_State_Old = 0;	 // 编码器上一次状态（A/B相组合）
@@ -114,23 +120,24 @@ void user_isr() // �û��жϺ���
 		Timer1_count1++;
 		Timer1_count2++;
 		Timer1_count3++;
-		if (Timer1_count1 >= 40)//20ms
+		if (Timer1_count1 >= 40) // 2000us
 		{
 			flag_1ms = 1;
 			Timer1_count1 = 0;
 		}
-		if (Timer1_count2 >= 1)
+		if (Timer1_count2 >= 85 + Motor_T) // 2.5ms+150us*(0--99)
 		{
-			Key_Scan_flag = 1;
+			Motor_flag = 1;
 			Timer1_count2 = 0;
 		}
-		if (Timer1_count3 >= 10000) // 500ms
+		if (Timer1_count3 >= 3000) // 150ms
 		{
 			Seg_flag = 1;
 			Timer1_count3 = 0;
 		}
 	}
 }
+
 /*-------------------------------------------------
  * 函数名：POWER_INITIAL
  * 功能： 	 上电系统初始化
@@ -149,7 +156,7 @@ void POWER_INITIAL(void)
 	PORTB = 0B00000000;
 	PORTC = 0B00000000;
 
-	WPUA |= 0B11110000; // EC11_A/EC11_B（编码器）使能弱上拉 // 弱上拉的开关，0-关，1-开
+	WPUA |= 0B11000000; // EC11_A/EC11_B（编码器）使能弱上拉 // 弱上拉的开关，0-关，1-开
 	WPUB = 0B00000000;
 	WPUC = 0B00000000;
 
@@ -157,7 +164,7 @@ void POWER_INITIAL(void)
 	WPDB = 0B00000000;
 	WPDC = 0B00000000;
 
-	TRISA = 0B11110000; // 输入输出设置，0-输出，1-输入 修改为EC11_A、EC11_B为输入
+	TRISA = 0B11000000; // 输入输出设置，0-输出，1-输入 修改为EC11_A、EC11_B为输入
 	TRISB = 0B00000010; // PB1输入
 	TRISC = 0B00000000;
 
@@ -171,6 +178,7 @@ void POWER_INITIAL(void)
 
 	ANSELA = 0B00000000; // 设置对应的IO为数字IO
 }
+
 void TIM1_INITIAL(void)
 {
 	PCKEN |= 0B00000010;  // ???TIMER1??????
@@ -187,62 +195,62 @@ void TIM1_INITIAL(void)
 	INTCON = 0B11000000; // ??????ж???????ж?
 }
 
-void Fan_Start(void)
-{
-	// 风扇转速
-	Fan_Count++;
-	if (Fan_Count > Number_Sum)
-	{
-		PA0 = 1; // 风扇转；
-	}
-	else if (Fan_Count <= Number_Sum)
-	{
-		PA0 = 0; // 风扇停
-	}
+// void Fan_Start(void)
+// {
+// 	// 风扇转速
+// 	Fan_Count++;
+// 	if (Fan_Count > Number_Sum)
+// 	{
+// 		PA0 = 1; // 风扇转；
+// 	}
+// 	else if (Fan_Count <= Number_Sum)
+// 	{
+// 		PA0 = 0; // 风扇停
+// 	}
 
-	if (Fan_Count > 99)
-	{
-		Fan_Count = 0;
-	}
-}
-void LED_Breath(void)
-{
-	if (Breath_Flag1 == 1)
-	{
-		PWM_count++;
-		if (PWM_count >= 20)
-		{
-			if (LED_PWM_Mid < 99)
-				LED_PWM_Mid++;
-			PWM_count = 0;
-		}
-	}
+// 	if (Fan_Count > 99)
+// 	{
+// 		Fan_Count = 0;
+// 	}
+// }
+// void LED_Breath(void)
+// {
+// 	if (Breath_Flag1 == 1)
+// 	{
+// 		PWM_count++;
+// 		if (PWM_count >= 20)
+// 		{
+// 			if (LED_PWM_Mid < 99)
+// 				LED_PWM_Mid++;
+// 			PWM_count = 0;
+// 		}
+// 	}
 
-	else if (Breath_Flag1 == 2)
-	{
-		PWM_count++;
-		if (PWM_count >= 20)
-		{
-			if (LED_PWM_Mid > 0)
-				LED_PWM_Mid--;
-			PWM_count = 0;
-		}
-	}
-	// 亮灭的核心
-	LED_Count++;
-	if (LED_Count > LED_PWM_Mid)
-	{
-		LED = 1; // 灯灭
-	}
-	else if (LED_Count <= LED_PWM_Mid)
-	{
-		LED = 0; // 灯亮
-	}
-	if (LED_Count > 99)
-	{
-		LED_Count = 0;
-	}
-}
+// 	else if (Breath_Flag1 == 2)
+// 	{
+// 		PWM_count++;
+// 		if (PWM_count >= 20)
+// 		{
+// 			if (LED_PWM_Mid > 0)
+// 				LED_PWM_Mid--;
+// 			PWM_count = 0;
+// 		}
+// 	}
+// 	// 亮灭的核心
+// 	LED_Count++;
+// 	if (LED_Count > LED_PWM_Mid)
+// 	{
+// 		LED = 1; // 灯灭
+// 	}
+// 	else if (LED_Count <= LED_PWM_Mid)
+// 	{
+// 		LED = 0; // 灯亮
+// 	}
+// 	if (LED_Count > 99)
+// 	{
+// 		LED_Count = 0;
+// 	}
+// }
 void Key_control_debounce(void) // 按键消抖
 {
 	if (Key_A == 0 && LED_PWM_Mid <= 99 && Key_B == 1)
@@ -326,24 +334,45 @@ void main(void)
 	while (1)
 	{
 
+		Motor_T = Number_Sum * 6;
 		if (flag_1ms == 1) // 2ms进来执行一次
 		{
 			// 旋钮控制数据
 			EC11_Process();
-			Fan_Start();
 			flag_1ms = 0;
 		}
-		if (Key_Scan_flag == 1) // 50us进来一次
+		if (Motor_flag == 1) // 进来的速度由Number_Sum决定
 		{
-			Key_control_debounce();
-			LED_Breath();
-			Key_Scan_flag = 0;
+			// Key_control_debounce();
+			// LED_Breath();
+			// 步进电机
+
+			PA0 = P_Motor[i_P_Current][0];
+
+			PA1 = P_Motor[i_P_Current][1];
+
+			PA4 = P_Motor[i_P_Current][2];
+
+			PA5 = P_Motor[i_P_Current][3];
+			if (i_P_Current < 4)
+			{
+				i_P_Current++;
+			}
+			else
+			{
+				i_P_Current = 0;
+			}
+			Motor_flag = 0;
 		}
 
-		if(Seg_flag ==1)//500ms
+		if (Seg_flag == 1) // 150ms
 		{
-			Seg_Display();// 里面有Delay
-			Seg_flag=0;
+			if (Number_Sum_Old != Number_Sum)
+			{
+				Seg_Display(); // 里面有Delay
+				Number_Sum_Old = Number_Sum;
+			}
+			Seg_flag = 0;
 		}
 	}
 }
