@@ -10,7 +10,8 @@
 #include "SYSCFG.h"
 #include "FT64F0AX.h"
 #include "TDelay.h"
-#include "TM1650_IIC.h"
+#include "TM1650_IIC_1.h"
+#include "TM1650_IIC_2.h"
 #include "EC11.h"
 //===========================================================
 
@@ -20,16 +21,14 @@
 #define TM1650_WRITE_ADDR 0x48
 #define TM1650_CMD_DISP_ON 0x01 // 8�����ȣ�7����ʾ��������ʾʹ�ܣ��ֲ�����ˣ�
 #define TM1650_CMD_ADDR_BASE 0x68
-#define SCL PB3
-#define SDA PB4
+#define SCL_seg1 PB3
+#define SDA_seg1 PB4
+#define SCL_seg2 PA0
+#define SDA_seg2 PA1
 
 #define EC11_A PA7
 #define EC11_B PA6
 
-#define Key_A PA0
-#define Key_B PA1
-
-#define LED PA1
 
 // 数码管变量定义
 unsigned char seg_code[] = {0x3F, 0x06, 0x5B, 0x4F, 0x66, 0x6D, 0x7D, 0x07, 0x7F, 0x6F}; // 0~9
@@ -42,7 +41,7 @@ int Number_Ge = 0;
 int Number_Shi = 0;
 int Number_Bai = 0;
 int Number_Qian = 0;
-unsigned char Seg_flag = 0;
+
 
 // LED_Breath
 unsigned char LED_Count = 0;
@@ -50,19 +49,11 @@ unsigned char LED_PWM_Mid = 0;
 unsigned char Breath_Flag1 = 0;
 
 // 按键扫描消抖
-unsigned char Motor_flag = 0;
+
 unsigned char key_statue_buffer = 0;
 unsigned char key_statue = 0;
 unsigned char key_count = 0;
 unsigned char PWM_count = 0;
-
-// 步进电机 IO: 0 1 4 5
-unsigned char P_Motor[8][4] = {{1, 0, 0, 0}, {1, 1, 0, 0}, {0, 1, 0, 0}, {0, 1, 1, 0}, {0, 0, 1, 0}, {0, 0, 1, 1}, {0, 0, 0, 1}, {1, 0, 0, 1}}; // 正转
-unsigned char N_Motor[8][4] = {{1, 0, 0, 1}, {0, 0, 0, 1}, {0, 0, 1, 1}, {0, 0, 1, 0}, {0, 1, 1, 0}, {0, 1, 0, 0}, {1, 1, 0, 0}, {1, 0, 0, 0}}; // 反转
-unsigned char i_P_Current;
-unsigned char i_P_Old;
-unsigned char Motor_Tick = 0;
-unsigned int Motor_T = 0;
 
 // 编码器相关变量
 unsigned char EC11_State_Old = 0;	 // 编码器上一次状态（A/B相组合）
@@ -73,7 +64,11 @@ unsigned int Debounce_count = 0;
 unsigned int Timer1_count1 = 0;
 unsigned int Timer1_count2 = 0;
 unsigned int Timer1_count3 = 0;
+
+//三个不同时间的旗帜
 unsigned char flag_1ms = 0;
+unsigned char Motor_flag = 0;
+unsigned char Seg_flag = 0;
 
 // Variable definition
 volatile char W_TMP @0x70;	 // ϵͳռ�ò�����ɾ�����޸�
@@ -126,7 +121,7 @@ void user_isr() // �û��жϺ���
 			flag_1ms = 1;
 			Timer1_count1 = 0;
 		}
-		if (Timer1_count2 >= 20 + Motor_T) // 2.5ms+50us*(0--99)
+		if (Timer1_count2 >= 20) // 2.5ms+50us*(0--99)
 		{
 			Motor_flag = 1;
 			Timer1_count2 = 0;
@@ -196,57 +191,7 @@ void TIM1_INITIAL(void)
 	INTCON = 0B11000000; // ??????ж???????ж?
 }
 
-void Key_control_debounce(void) // 按键消抖
-{
-	if (Key_A == 0 && LED_PWM_Mid <= 99 && Key_B == 1)
-	{
-		key_statue_buffer = 1;
-	}
-	else if (Key_B == 0 && LED_PWM_Mid > 0 && Key_A == 1)
-	{
-		key_statue_buffer = 2;
-	}
-	else if (Key_A == 0 && Key_B == 0)
-	{
-		key_statue_buffer = 0;
-	}
-	else if (Key_A == 1 && Key_B == 1)
-	{
-		key_statue_buffer = 0;
-	}
-
-	if (key_statue != key_statue_buffer)
-	{
-		key_count++;
-		if (key_count >= 10)
-		{
-			key_count = 0;
-			key_statue = key_statue_buffer;
-			// 根据按键状态设置呼吸灯模式
-			switch (key_statue)
-			{
-			case 0: // 两键都松开 - 停止呼吸，保持当前亮度
-				Breath_Flag1 = 0;
-				break;
-			case 1: // Key_A按下 - 开始渐亮
-				Breath_Flag1 = 1;
-				break;
-			case 2: // Key_B按下 - 开始渐暗
-				Breath_Flag1 = 2;
-				break;
-			case 3: // 两键都按下 - 快速回到0亮度
-				Breath_Flag1 = 0;
-				LED_PWM_Mid = 0;
-				break;
-			}
-		}
-	}
-	else
-	{
-		key_count = 0;
-	}
-}
-void Seg_Display(void)
+void Seg1_Display(void)//正负数（最大99）
 {
 	// 数据处理，显示在数码管
 	if (Number_Sum >= 0)
@@ -255,17 +200,17 @@ void Seg_Display(void)
 		Number_Shi = Number_Sum / 10;
 		if (Number_Sum >= 0 && Number_Sum < 10)
 		{
-			TM1650_Set(led_place[0], seg_code[Number_Ge]);
-			TM1650_Set(led_place[1], 0);
-			TM1650_Set(led_place[2], 0);
-			TM1650_Set(led_place[3], 0);
+			TM1650_1_Set(led_place[0], seg_code[Number_Ge]);
+			TM1650_1_Set(led_place[1], 0);
+			TM1650_1_Set(led_place[2], 0);
+			TM1650_1_Set(led_place[3], 0);
 		}
 		else if (Number_Sum >= 10 && Number_Sum < 100)
 		{
-			TM1650_Set(led_place[0], seg_code[Number_Shi]);
-			TM1650_Set(led_place[1], seg_code[Number_Ge]);
-			TM1650_Set(led_place[2], 0);
-			TM1650_Set(led_place[3], 0);
+			TM1650_1_Set(led_place[0], seg_code[Number_Shi]);
+			TM1650_1_Set(led_place[1], seg_code[Number_Ge]);
+			TM1650_1_Set(led_place[2], 0);
+			TM1650_1_Set(led_place[3], 0);
 		}
 	}
 	if (Number_Sum < 0)
@@ -275,17 +220,17 @@ void Seg_Display(void)
 		Number_Shi = Number_Sum_Abs / 10;
 		if (Number_Sum_Abs >= 0 && Number_Sum_Abs < 10)
 		{
-			TM1650_Set(led_place[0], 0x40); // 负号
-			TM1650_Set(led_place[1], seg_code[Number_Ge]);
-			TM1650_Set(led_place[2], 0);
-			TM1650_Set(led_place[3], 0);
+			TM1650_1_Set(led_place[0], 0x40); // 负号
+			TM1650_1_Set(led_place[1], seg_code[Number_Ge]);
+			TM1650_1_Set(led_place[2], 0);
+			TM1650_1_Set(led_place[3], 0);
 		}
 		else if (Number_Sum_Abs >= 10 && Number_Sum_Abs < 100)
 		{
-			TM1650_Set(led_place[0], 0x40);
-			TM1650_Set(led_place[1], seg_code[Number_Shi]);
-			TM1650_Set(led_place[2], seg_code[Number_Ge]);
-			TM1650_Set(led_place[3], 0);
+			TM1650_1_Set(led_place[0], 0x40);
+			TM1650_1_Set(led_place[1], seg_code[Number_Shi]);
+			TM1650_1_Set(led_place[2], seg_code[Number_Ge]);
+			TM1650_1_Set(led_place[3], 0);
 		}
 	}
 }
@@ -294,22 +239,14 @@ void main(void)
 {
 	POWER_INITIAL(); // �0�3�0�1�1�7�1�7�0�3�1�7�1�7
 	TIM1_INITIAL();
-	TM1650_Init();
-	TM1650_Set(led_place[0], seg_code[9]); // 能显示，测试
+	TM1650_1_Init();
+	TM1650_2_Init();
+	TM1650_1_Set(led_place[0], seg_code[9]); // 能显示，测试
+	TM1650_2_Set(led_place[0], seg_code[9]);
 	EC11_State_Old = EC11_Read_State();
 	Number_Sum = 1;
 	while (1)
 	{
-
-		if (Number_Sum >= 0)
-		{
-			Motor_T = Number_Sum;
-		}
-		else
-		{
-			Motor_T = (-Number_Sum);
-		}
-
 		if (flag_1ms == 1) // 2ms进来执行一次
 		{
 			// 旋钮控制数据
@@ -318,38 +255,6 @@ void main(void)
 		}
 		if (Motor_flag == 1) // 进来的速度由Number_Sum决定
 		{
-			// 步进电机
-			if (Number_Sum >= 0)
-			{
-				PA0 = P_Motor[i_P_Current][0];
-				PA1 = P_Motor[i_P_Current][1];
-				PA4 = P_Motor[i_P_Current][2];
-				PA5 = P_Motor[i_P_Current][3];
-				if (i_P_Current < 8)
-				{
-					i_P_Current++;
-				}
-				else
-				{
-					i_P_Current = 0;
-				}
-			}
-			else
-			{
-				PA0 = N_Motor[i_P_Current][0];
-				PA1 = N_Motor[i_P_Current][1];
-				PA4 = N_Motor[i_P_Current][2];
-				PA5 = N_Motor[i_P_Current][3];
-				if (i_P_Current < 8)
-				{
-					i_P_Current++;
-				}
-				else
-				{
-					i_P_Current = 0;
-				}
-			}
-
 			Motor_flag = 0;
 		}
 
@@ -357,7 +262,7 @@ void main(void)
 		{
 			if (Number_Sum_Old != Number_Sum)
 			{
-				Seg_Display(); // 里面有Delay
+				Seg1_Display(); // 里面有Delay
 				Number_Sum_Old = Number_Sum;
 			}
 			Seg_flag = 0;
