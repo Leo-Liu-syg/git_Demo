@@ -67,8 +67,8 @@ unsigned int Timer1_count3 = 0;
 
 //三个不同时间的旗帜
 unsigned char flag_1ms = 0;
-unsigned char Motor_flag = 0;
-unsigned char Seg_flag = 0;
+unsigned char Seg2_flag = 0;
+unsigned char Seg1_flag = 0;
 
 // Variable definition
 volatile char W_TMP @0x70;	 // ϵͳռ�ò�����ɾ�����޸�
@@ -123,12 +123,12 @@ void user_isr() // �û��жϺ���
 		}
 		if (Timer1_count2 >= 20) // 2.5ms+50us*(0--99)
 		{
-			Motor_flag = 1;
+			Seg2_flag = 1;
 			Timer1_count2 = 0;
 		}
 		if (Timer1_count3 >= 3000) // 150ms
 		{
-			Seg_flag = 1;
+			Seg1_flag = 1;
 			Timer1_count3 = 0;
 		}
 	}
@@ -235,6 +235,51 @@ void Seg1_Display(void)//正负数（最大99）
 	}
 }
 
+void Seg2_Display(void)//正负数（最大99）
+{
+	// 数据处理，显示在数码管
+	if (Number_Sum >= 0)
+	{
+		Number_Ge = Number_Sum % 10;
+		Number_Shi = Number_Sum / 10;
+		if (Number_Sum >= 0 && Number_Sum < 10)
+		{
+			TM1650_2_Set(led_place[0], seg_code[Number_Ge]);
+			TM1650_2_Set(led_place[1], 0);
+			TM1650_2_Set(led_place[2], 0);
+			TM1650_2_Set(led_place[3], 0);
+		}
+		else if (Number_Sum >= 10 && Number_Sum < 100)
+		{
+			TM1650_2_Set(led_place[0], seg_code[Number_Shi]);
+			TM1650_2_Set(led_place[1], seg_code[Number_Ge]);
+			TM1650_2_Set(led_place[2], 0);
+			TM1650_2_Set(led_place[3], 0);
+		}
+	}
+	if (Number_Sum < 0)
+	{
+		Number_Sum_Abs = -Number_Sum; // 转为正数
+		Number_Ge = Number_Sum_Abs % 10;
+		Number_Shi = Number_Sum_Abs / 10;
+		if (Number_Sum_Abs >= 0 && Number_Sum_Abs < 10)
+		{
+			TM1650_2_Set(led_place[0], 0x40); // 负号
+			TM1650_2_Set(led_place[1], seg_code[Number_Ge]);
+			TM1650_2_Set(led_place[2], 0);
+			TM1650_2_Set(led_place[3], 0);
+		}
+		else if (Number_Sum_Abs >= 10 && Number_Sum_Abs < 100)
+		{
+			TM1650_2_Set(led_place[0], 0x40);
+			TM1650_2_Set(led_place[1], seg_code[Number_Shi]);
+			TM1650_2_Set(led_place[2], seg_code[Number_Ge]);
+			TM1650_2_Set(led_place[3], 0);
+		}
+	}
+}
+
+
 void main(void)
 {
 	POWER_INITIAL(); // �0�3�0�1�1�7�1�7�0�3�1�7�1�7
@@ -253,19 +298,21 @@ void main(void)
 			EC11_Process();
 			flag_1ms = 0;
 		}
-		if (Motor_flag == 1) // 进来的速度由Number_Sum决定
+		if (Seg2_flag == 1) // 进来的速度由Number_Sum决定
 		{
-			Motor_flag = 0;
+			
+			Seg2_flag = 0;
 		}
 
-		if (Seg_flag == 1) // 150ms
+		if (Seg1_flag == 1) // 150ms
 		{
 			if (Number_Sum_Old != Number_Sum)
 			{
 				Seg1_Display(); // 里面有Delay
+				Seg2_Display();
 				Number_Sum_Old = Number_Sum;
 			}
-			Seg_flag = 0;
+			Seg1_flag = 0;
 		}
 	}
 }
