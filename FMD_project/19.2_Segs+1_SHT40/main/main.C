@@ -14,6 +14,7 @@
 #include "TM1650_IIC_2.h"
 #include "EC11.h"
 #include "IIC_SHT.h"
+#include "EEPROM.h"
 //===========================================================
 
 //***********************宏定义****************************
@@ -31,12 +32,16 @@
 #define SDA_SHT PA4
 #define SCL_SHT PA5
 
-#define EC11_A PA7
-#define EC11_B PA6
+// 摄氏度/华氏度
+#define S 1
+#define H 0
+
+#define Key PA7
 
 // 数码管变量定义
 unsigned char seg_code[] = {0x3F, 0x06, 0x5B, 0x4F, 0x66, 0x6D, 0x7D, 0x07, 0x7F, 0x6F}; // 0~9
 unsigned char led_place[] = {0x68, 0x6A, 0x6C, 0x6E};
+
 // 温度数码管1
 float Number_Sum_1 = 0.0f;
 float Number_Sum_1_Old = 0.0f;
@@ -46,6 +51,7 @@ int Number_Shi_1 = 0;
 int Number_Bai_1 = 0;
 int Number_Qian_1 = 0;
 char Number_Dec_1 = 0;
+
 // 湿度数码管2
 float Number_Sum_2 = 0.0f;
 float Number_Sum_2_Old = 0.0f;
@@ -65,12 +71,10 @@ char Number_Dec_2 = 0;
 
 // unsigned char key_statue_buffer = 0;
 // unsigned char key_statue = 0;
-// unsigned char key_count = 0;
+unsigned int key_count = 0;
+unsigned char Key_state=0;
+unsigned Switch_Buf=0;
 // unsigned char PWM_count = 0;
-
-// 编码器相关变量
-unsigned char EC11_State_Old = 0;	 // 编码器上一次状态（A/B相组合）
-unsigned char EC11_Debounce_Cnt = 0; // 编码器防抖计数
 
 // Timer1
 unsigned int Debounce_count = 0;
@@ -78,9 +82,9 @@ unsigned int Timer1_count1 = 0;
 unsigned int Timer1_count2 = 0;
 unsigned int Timer1_count3 = 0;
 
-// 三个不同时间的旗帜
+// 三个不同时间的定时旗帜
 unsigned char flag_1s = 0;
-unsigned char Seg2_flag = 0;
+unsigned char S_or_H_flag = 0;
 unsigned char Seg1_flag = 0;
 
 // 温湿度
@@ -91,6 +95,7 @@ float sht_temperature = 0.0f; // 温度(℃)
 float sht_humidity = 0.0f;	  // 湿度(%RH)
 unsigned int temp_raw = 0;
 unsigned int humi_raw = 0;
+unsigned char MODE_SorH = 0;
 
 // Variable definition
 volatile char W_TMP @0x70;	 // ϵͳռ�ò�����ɾ�����޸�
@@ -143,9 +148,9 @@ void user_isr() // �û��жϺ���
 			flag_1s = 1;
 			Timer1_count1 = 0;
 		}
-		if (Timer1_count2 >= 3000) // 没有用上
+		if (Timer1_count2 >= 20) // 没有用上
 		{
-			Seg2_flag = 1;
+			S_or_H_flag = 1;
 			Timer1_count2 = 0;
 		}
 		if (Timer1_count3 >= 3000) // 150ms
@@ -307,7 +312,6 @@ void Seg2_Display(void) // 正负数（最大99）
 	}
 }
 
-
 void main(void)
 {
 	POWER_INITIAL(); // �0�3�0�1�1�7�1�7�0�3�1�7�1�7
@@ -323,29 +327,82 @@ void main(void)
 		if (flag_1s == 1) // 1s进来执行一次
 		{
 			SHT_process();
-
 			// 数据处理
 			//  4. 拼接16位原始数据（高字节+低字节，SHT系列温湿度均为16位数据）
 			temp_raw = (sht_data_buf[0] << 8) | sht_data_buf[1]; // 温度原始值（第0、1字节）
 			humi_raw = (sht_data_buf[3] << 8) | sht_data_buf[4]; // 湿度原始值（第3、4字节）
 			// （可选）CRC校验：对比sht_data_buf[2]（温度CRC）、sht_data_buf[5]（湿度CRC），提升数据可靠性
 
-			// 5. 转换为实际温湿度（SHT3x/SHT2x通用公式，手册标准转换方法）
-			sht_temperature = (float)(temp_raw * 175.0f / 65535.0f) - 45.0f; // 温度公式：-45~125℃
-			sht_humidity = (float)(humi_raw * 100.0f / 65535.0f);			 // 湿度公式：0~100%RH
-			// sht_temperature=-16.123;
+			// 摄氏度
+			if (MODE_SorH == S)
+			{
+				sht_temperature = (float)(temp_raw * 175.0f / 65535.0f) - 45.0f;
+			} // 温度公式：-45~125℃
+			// 华氏度
+			if (MODE_SorH == H)
+			{
+				sht_temperature = (float)(-49.0f + 315.0f * (temp_raw / 65535.0f));
+			}
+
+			// 赋值给显示变量
 			Number_Sum_1 = sht_temperature;
+
+			//湿度
+			sht_humidity = (float)(humi_raw * 100.0f / 65535.0f); // 湿度公式：0~100%RH
 			Number_Sum_2 = (sht_humidity > 100) ? 100.0f : sht_humidity; // 裁剪超范围值
 			flag_1s = 0;
 		}
-		if (Seg2_flag == 1) // 150ms
+		if (S_or_H_flag == 1) // 1ms
 		{
-			if (Number_Sum_2_Old != Number_Sum_2)
+			if (Key ==0)
 			{
-				Seg2_Display();
-				Number_Sum_2_Old = Number_Sum_2;
+				switch (Key_state)
+				{
+				case 0:
+					if (Key ==0) // 检测到一个按下瞬间
+					{
+						key_count++;
+						if (key_count > 20)
+						{
+							key_count=0;
+							Key_state = 1;
+						}
+					}
+					else
+					{
+						break;
+					}
+					break;
+				case 1:
+					key_count++;
+					if (key_count > 50)
+					{
+						key_count = 0;
+						Key_state = 2;
+					}
+					break;
+				case 2:
+					if (Key == 0)
+					{
+						Switch_Buf+= 50;
+						Key_state=1;
+						if(Switch_Buf>=2000)
+						{
+							MODE_SorH=MODE_SorH^1;
+							EEPROM_Write(0x01,MODE_SorH);
+							Switch_Buf=0;
+						}
+					}
+					else if (Key == 1) // 检测到松手
+					{
+						Key_state = 0;
+						key_count=0;
+						break;
+					}
+					break;
+				}
 			}
-			Seg2_flag = 0;
+			S_or_H_flag = 0;
 		}
 
 		if (Seg1_flag == 1) // 150ms
@@ -354,6 +411,11 @@ void main(void)
 			{
 				Seg1_Display(); // 里面有Delay
 				Number_Sum_1_Old = Number_Sum_1;
+			}
+			if (Number_Sum_2_Old != Number_Sum_2)
+			{
+				Seg2_Display();
+				Number_Sum_2_Old = Number_Sum_2;
 			}
 			Seg1_flag = 0;
 		}
