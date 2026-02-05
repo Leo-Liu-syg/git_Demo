@@ -68,7 +68,6 @@ unsigned char TM1650_1_IIC_wait_ack(void)//有用到
 {
 	unsigned char ack_signal = 1; // 默认NACK
 	SDA_seg1 = 1;					  // 配置SDA_seg1为输入模式 或者是 高阻抗，释放总线
-
 	SCL_seg1 = 1;						 // 生成SCL_seg1上升沿
 	TDelay_us(TM1650_SCL_seg1_HOLD_TIME); // 保持SCL_seg1高电平
 

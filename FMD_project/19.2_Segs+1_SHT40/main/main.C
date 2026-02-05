@@ -23,25 +23,35 @@
 #define TM1650_CMD_ADDR_BASE 0x68
 #define SCL_seg1 PB3
 #define SDA_seg1 PB4
+
 #define SCL_seg2 PA0
 #define SDA_seg2 PA1
+
+#define SDA_SHT PA4
+#define SCL_SHT PA5
 
 #define EC11_A PA7
 #define EC11_B PA6
 
-
 // 数码管变量定义
 unsigned char seg_code[] = {0x3F, 0x06, 0x5B, 0x4F, 0x66, 0x6D, 0x7D, 0x07, 0x7F, 0x6F}; // 0~9
 unsigned char led_place[] = {0x68, 0x6A, 0x6C, 0x6E};
-
-int Number_Sum = 0;
-int Number_Sum_Old = 0;
-int Number_Sum_Abs = 0; // 用于处理负数
-int Number_Ge = 0;
-int Number_Shi = 0;
-int Number_Bai = 0;
-int Number_Qian = 0;
-
+// 温度
+int Number_Sum_1 = 0;
+int Number_Sum_1_Old = 0;
+int Number_Sum_1_Abs = 0; // 用于处理负数
+int Number_Ge_1 = 0;
+int Number_Shi_1 = 0;
+int Number_Bai_1 = 0;
+int Number_Qian_1 = 0;
+// 湿度
+int Number_Sum_2 = 0;
+int Number_Sum_2_Old = 0;
+int Number_Sum_2_Abs = 0; // 用于处理负数
+int Number_Ge_2 = 0;
+int Number_Shi_2 = 0;
+int Number_Bai_2 = 0;
+int Number_Qian_2 = 0;
 
 // LED_Breath
 unsigned char LED_Count = 0;
@@ -65,10 +75,17 @@ unsigned int Timer1_count1 = 0;
 unsigned int Timer1_count2 = 0;
 unsigned int Timer1_count3 = 0;
 
-//三个不同时间的旗帜
+// 三个不同时间的旗帜
 unsigned char flag_1ms = 0;
 unsigned char Seg2_flag = 0;
 unsigned char Seg1_flag = 0;
+
+// 温湿度
+//  1. 定义全局/局部缓冲区（6个元素，存传感器返回的6字节原始数据）
+unsigned int sht_data_buf[6] = {0}; // 缓冲区初始化清零
+// 2. 定义变量存最终实际温湿度（浮点型，保留2位小数足够）
+float sht_temperature = 0.0f; // 温度(℃)
+float sht_humidity = 0.0f;	  // 湿度(%RH)
 
 // Variable definition
 volatile char W_TMP @0x70;	 // ϵͳռ�ò�����ɾ�����޸�
@@ -116,12 +133,12 @@ void user_isr() // �û��жϺ���
 		Timer1_count1++;
 		Timer1_count2++;
 		Timer1_count3++;
-		if (Timer1_count1 >= 40) // 2000us
+		if (Timer1_count1 >= 20000) // 1s
 		{
 			flag_1ms = 1;
 			Timer1_count1 = 0;
 		}
-		if (Timer1_count2 >= 20) // 2.5ms+50us*(0--99)
+		if (Timer1_count2 >= 3000) // 没有用上
 		{
 			Seg2_flag = 1;
 			Timer1_count2 = 0;
@@ -191,94 +208,284 @@ void TIM1_INITIAL(void)
 	INTCON = 0B11000000; // ??????ж???????ж?
 }
 
-void Seg1_Display(void)//正负数（最大99）
+void Seg1_Display(void) // 正负数（最大99）
 {
 	// 数据处理，显示在数码管
-	if (Number_Sum >= 0)
+	if (Number_Sum_1 >= 0)
 	{
-		Number_Ge = Number_Sum % 10;
-		Number_Shi = Number_Sum / 10;
-		if (Number_Sum >= 0 && Number_Sum < 10)
+		Number_Ge_1 = Number_Sum_1 % 10;
+		Number_Shi_1 = Number_Sum_1 / 10;
+		if (Number_Sum_1 >= 0 && Number_Sum_1 < 10)
 		{
-			TM1650_1_Set(led_place[0], seg_code[Number_Ge]);
+			TM1650_1_Set(led_place[0], seg_code[Number_Ge_1]);
 			TM1650_1_Set(led_place[1], 0);
 			TM1650_1_Set(led_place[2], 0);
-			TM1650_1_Set(led_place[3], 0);
+			TM1650_1_Set(led_place[3], 0b00111001);
 		}
-		else if (Number_Sum >= 10 && Number_Sum < 100)
+		else if (Number_Sum_1 >= 10 && Number_Sum_1 < 100)
 		{
-			TM1650_1_Set(led_place[0], seg_code[Number_Shi]);
-			TM1650_1_Set(led_place[1], seg_code[Number_Ge]);
+			TM1650_1_Set(led_place[0], seg_code[Number_Shi_1]);
+			TM1650_1_Set(led_place[1], seg_code[Number_Ge_1]);
 			TM1650_1_Set(led_place[2], 0);
-			TM1650_1_Set(led_place[3], 0);
+			TM1650_1_Set(led_place[3], 0b00111001);
 		}
 	}
-	if (Number_Sum < 0)
+	if (Number_Sum_1 < 0)
 	{
-		Number_Sum_Abs = -Number_Sum; // 转为正数
-		Number_Ge = Number_Sum_Abs % 10;
-		Number_Shi = Number_Sum_Abs / 10;
-		if (Number_Sum_Abs >= 0 && Number_Sum_Abs < 10)
+		Number_Sum_1_Abs = -Number_Sum_1; // 转为正数
+		Number_Ge_1 = Number_Sum_1_Abs % 10;
+		Number_Shi_1 = Number_Sum_1_Abs / 10;
+		if (Number_Sum_1_Abs >= 0 && Number_Sum_1_Abs < 10)
 		{
 			TM1650_1_Set(led_place[0], 0x40); // 负号
-			TM1650_1_Set(led_place[1], seg_code[Number_Ge]);
+			TM1650_1_Set(led_place[1], seg_code[Number_Ge_1]);
 			TM1650_1_Set(led_place[2], 0);
-			TM1650_1_Set(led_place[3], 0);
+			TM1650_1_Set(led_place[3], 0b00111001);
 		}
-		else if (Number_Sum_Abs >= 10 && Number_Sum_Abs < 100)
+		else if (Number_Sum_1_Abs >= 10 && Number_Sum_1_Abs < 100)
 		{
 			TM1650_1_Set(led_place[0], 0x40);
-			TM1650_1_Set(led_place[1], seg_code[Number_Shi]);
-			TM1650_1_Set(led_place[2], seg_code[Number_Ge]);
-			TM1650_1_Set(led_place[3], 0);
+			TM1650_1_Set(led_place[1], seg_code[Number_Shi_1]);
+			TM1650_1_Set(led_place[2], seg_code[Number_Ge_1]);
+			TM1650_1_Set(led_place[3], 0b00111001);
 		}
 	}
 }
 
-void Seg2_Display(void)//正负数（最大99）
+void Seg2_Display(void) // 正负数（最大99）
 {
 	// 数据处理，显示在数码管
-	if (Number_Sum >= 0)
+	if (Number_Sum_2 >= 0)
 	{
-		Number_Ge = Number_Sum % 10;
-		Number_Shi = Number_Sum / 10;
-		if (Number_Sum >= 0 && Number_Sum < 10)
+		Number_Ge_2 = Number_Sum_2 % 10;
+		Number_Shi_2 = Number_Sum_2 / 10;
+		if (Number_Sum_2 >= 0 && Number_Sum_2 < 10)
 		{
-			TM1650_2_Set(led_place[0], seg_code[Number_Ge]);
+			TM1650_2_Set(led_place[0], seg_code[Number_Ge_2]);
 			TM1650_2_Set(led_place[1], 0);
 			TM1650_2_Set(led_place[2], 0);
-			TM1650_2_Set(led_place[3], 0);
+			TM1650_2_Set(led_place[3], 0b01110110);
 		}
-		else if (Number_Sum >= 10 && Number_Sum < 100)
+		else if (Number_Sum_2 >= 10 && Number_Sum_2 < 100)
 		{
-			TM1650_2_Set(led_place[0], seg_code[Number_Shi]);
-			TM1650_2_Set(led_place[1], seg_code[Number_Ge]);
+			TM1650_2_Set(led_place[0], seg_code[Number_Shi_2]);
+			TM1650_2_Set(led_place[1], seg_code[Number_Ge_2]);
 			TM1650_2_Set(led_place[2], 0);
-			TM1650_2_Set(led_place[3], 0);
+			TM1650_2_Set(led_place[3], 0b01110110);
 		}
 	}
-	if (Number_Sum < 0)
+	if (Number_Sum_2 < 0)
 	{
-		Number_Sum_Abs = -Number_Sum; // 转为正数
-		Number_Ge = Number_Sum_Abs % 10;
-		Number_Shi = Number_Sum_Abs / 10;
-		if (Number_Sum_Abs >= 0 && Number_Sum_Abs < 10)
+		Number_Sum_2_Abs = -Number_Sum_2; // 转为正数
+		Number_Ge_2 = Number_Sum_2_Abs % 10;
+		Number_Shi_2 = Number_Sum_2_Abs / 10;
+		if (Number_Sum_2_Abs >= 0 && Number_Sum_2_Abs < 10)
 		{
 			TM1650_2_Set(led_place[0], 0x40); // 负号
-			TM1650_2_Set(led_place[1], seg_code[Number_Ge]);
+			TM1650_2_Set(led_place[1], seg_code[Number_Ge_2]);
 			TM1650_2_Set(led_place[2], 0);
-			TM1650_2_Set(led_place[3], 0);
+			TM1650_2_Set(led_place[3], 0b01110110);
 		}
-		else if (Number_Sum_Abs >= 10 && Number_Sum_Abs < 100)
+		else if (Number_Sum_2_Abs >= 10 && Number_Sum_2_Abs < 100)
 		{
 			TM1650_2_Set(led_place[0], 0x40);
-			TM1650_2_Set(led_place[1], seg_code[Number_Shi]);
-			TM1650_2_Set(led_place[2], seg_code[Number_Ge]);
-			TM1650_2_Set(led_place[3], 0);
+			TM1650_2_Set(led_place[1], seg_code[Number_Shi_2]);
+			TM1650_2_Set(led_place[2], seg_code[Number_Ge_2]);
+			TM1650_2_Set(led_place[3], 0b01110110);
 		}
 	}
 }
 
+// 温度传感器
+void IIC_SHT_Start(void)
+{
+	TRISA &= ~(1 << 4); // 输出模式
+	SDA_SHT = 1;
+	SCL_SHT = 1;
+	TDelay_us(5);
+	SDA_SHT = 0;
+	TDelay_us(5);
+	SCL_SHT = 0;
+}
+
+void IIC_SHT_Write_Byte(unsigned char addr_7bit) // 写请求，写0x44或0x45
+{
+	unsigned char txd;
+	txd = (addr_7bit << 1) | 0;
+	TRISA &= ~(1 << 4);
+	ODCON0 |= ~(1 << 4); // SDA_seg1线输出模式
+	SCL_SHT = 0;
+	for (unsigned char i = 0; i < 8; i++)
+	{
+		SDA_SHT = (txd & 0x80) ? 1 : 0;
+		txd <<= 1;
+		TDelay_us(2);
+		SCL_SHT = 1;
+		TDelay_us(2);
+		SCL_SHT = 0;
+		TDelay_us(2);
+	}
+}
+
+unsigned char IIC_SHT_Ack(void)
+{
+	TRISA |= (1 << 4);			  // 输入
+	WPUA |= (1 << 4);			  // 弱上拉
+	unsigned char Ack_signal = 1; // Default None Ack
+	SCL_SHT = 1;
+	TDelay_us(2);
+	for (int i = 0; i < 3; i++)
+	{
+		if (SDA_SHT == 0)
+		{
+			Ack_signal = 0;
+			break;
+		}
+		TDelay_us(1);
+	}
+	SCL_SHT = 0;
+	TDelay_us(5);
+	return Ack_signal;
+}
+
+void IIC_SHT_Write_Command(unsigned char CM_8_bit) // 选择精度(0xFD)
+{
+	unsigned char txd;
+	unsigned char i;
+	TRISA = TRISA & ~(1 << 4); // SDA置为0.输出模式
+	WPUA = WPUA & ~(1 << 4);   // 关闭若上拉
+	txd = CM_8_bit;
+	SCL_SHT = 0;
+	for (i = 0; i < 8; i++)
+	{
+		if (txd & 0x80)
+			SDA_SHT = 1;
+		else
+			SDA_SHT = 0;
+		txd <<= 1;
+		TDelay_us(2);
+		SCL_SHT = 1;
+		TDelay_us(2);
+		SCL_SHT = 0;
+		TDelay_us(2);
+	}
+}
+
+void IIC_SHT_Stop(void)
+{
+	TRISA &= ~(1 << 4);
+	SDA_SHT = 0;
+	SCL_SHT = 0;
+	TDelay_us(2);
+	SCL_SHT = 1;
+	TDelay_us(5);
+	SDA_SHT = 1;
+	TDelay_us(2);
+}
+
+void IIC_SHT_Read_Byte(unsigned char addr_7bit) // 读请求，读0x44或0x45
+{
+	unsigned char txd;
+	unsigned char i;
+	txd = (addr_7bit << 1) | 1;
+	ODCON0 |= 0B00100000; // SDA_seg1线输出模式
+	SCL_SHT = 0;
+	for (i = 0; i < 8; i++)
+	{
+		if (txd & 0x80)
+			SDA_SHT = 1;
+		else
+			SDA_SHT = 0;
+		txd = txd << 1;
+		TDelay_us(2);
+		SCL_SHT = 1;
+		TDelay_us(2);
+		SCL_SHT = 0;
+		TDelay_us(2);
+	}
+}
+
+// 读取6字节传感器数据（含CRC校验）
+unsigned int IIC_SHT_Read_6Bytes(unsigned int data_buf[6])
+{
+	// --------------------------
+	// 1. SDA切换为输入模式，准备读取
+	// --------------------------
+	TRISA |= (1 << 4);	 // PA4设为输入（方向寄存器置1）
+	ODCON0 &= ~(1 << 4); // 关闭SDA输出驱动器（输入模式不需要）
+	SCL_SHT = 0;		 // SCL初始拉低
+
+	// --------------------------
+	// 2. 循环读取6字节数据
+	// --------------------------
+	for (int byte_idx = 0; byte_idx < 6; byte_idx++)
+	{
+		unsigned int recv_byte = 0;
+
+		// --------------------------
+		// 3. 逐位读取1字节（高位→低位）
+		// --------------------------
+		for (int bit_idx = 0; bit_idx < 8; bit_idx++)
+		{
+			// 拉高SCL ≥2us，等待传感器输出数据
+			SCL_SHT = 1;
+			TDelay_us(2);
+
+			// 读取SDA电平，拼接到当前字节（高位在前）
+			recv_byte = (recv_byte << 1) | (SDA_SHT == 1 ? 1 : 0);
+
+			// 拉低SCL，准备下一位
+			SCL_SHT = 0;
+			TDelay_us(2);
+		}
+		data_buf[byte_idx] = recv_byte; // 保存当前字节
+
+		// --------------------------
+		// 4. 发送ACK/NACK
+
+		// --------------------------
+		// 临时切换SDA为输出模式（发送ACK/NACK需要主机输出）
+		TRISA &= ~(1 << 4); // PA4设为输出
+		ODCON0 |= (1 << 4); // 使能输出驱动器
+
+		if (byte_idx < 5)
+		{
+			// 前5字节：发送ACK（SDA拉低）
+			SDA_SHT = 0;
+		}
+		else
+		{
+			// 第6字节（最后1个）：发送NACK（SDA拉高）
+			SDA_SHT = 1;
+		}
+
+		// ACK/NACK时序：拉高SCL≥2us → 拉低SCL
+		SCL_SHT = 1;
+		TDelay_us(2);
+		SCL_SHT = 0;
+		TDelay_us(2);
+
+		// 切换SDA回输入模式，准备读取下一字节
+		TRISA |= (1 << 4);
+		ODCON0 &= ~(1 << 5);
+	}
+
+	return 0; // 读取完成
+}
+
+void SHT_process(void)
+{
+	IIC_SHT_Start();
+	IIC_SHT_Write_Byte(0x44);
+	IIC_SHT_Ack();
+	IIC_SHT_Write_Command(0xFD);
+	IIC_SHT_Ack();
+	IIC_SHT_Stop();
+	TDelay_ms(20); // 等待传感器完成传递数据
+	IIC_SHT_Start();
+	IIC_SHT_Read_Byte(0x44); // 包含了ack
+	IIC_SHT_Read_6Bytes(sht_data_buf);
+}
 
 void main(void)
 {
@@ -286,31 +493,52 @@ void main(void)
 	TIM1_INITIAL();
 	TM1650_1_Init();
 	TM1650_2_Init();
-	TM1650_1_Set(led_place[0], seg_code[9]); // 能显示，测试
-	TM1650_2_Set(led_place[0], seg_code[9]);
-	EC11_State_Old = EC11_Read_State();
-	Number_Sum = 1;
+	TM1650_1_Set(led_place[3], 0b00111001); // 能显示，测试
+	TM1650_2_Set(led_place[3], 0b01110110);
+	// EC11_State_Old = EC11_Read_State();
+	Number_Sum_1 = 1;
+	Number_Sum_2 = 1;
 	while (1)
 	{
-		if (flag_1ms == 1) // 2ms进来执行一次
+		if (IIC_SHT_Read_6Bytes(sht_data_buf) == 0)
+		{
+			// 4. 拼接16位原始数据（高字节+低字节，SHT系列温湿度均为16位数据）
+			unsigned int temp_raw = (sht_data_buf[0] << 8) | sht_data_buf[1]; // 温度原始值（第0、1字节）
+			unsigned int humi_raw = (sht_data_buf[3] << 8) | sht_data_buf[4]; // 湿度原始值（第3、4字节）
+			// （可选）CRC校验：对比sht_data_buf[2]（温度CRC）、sht_data_buf[5]（湿度CRC），提升数据可靠性
+
+			// 5. 转换为实际温湿度（SHT3x/SHT2x通用公式，手册标准转换方法）
+			sht_temperature = (float)(temp_raw * 175.0f / 65535.0f) - 45.0f; // 温度公式：-45~125℃
+			sht_humidity = (float)(humi_raw * 100.0f / 65535.0f);			 // 湿度公式：0~100%RH
+			// 温度
+			Number_Sum_1 = sht_temperature;
+			// 湿度
+			Number_Sum_2 = sht_humidity;
+		}
+
+		if (flag_1ms == 1) // 1s进来执行一次
 		{
 			// 旋钮控制数据
-			EC11_Process();
+			// EC11_Process();
+			SHT_process();
 			flag_1ms = 0;
 		}
-		if (Seg2_flag == 1) // 进来的速度由Number_Sum决定
+		if (Seg2_flag == 1) // 150ms
 		{
-			
+			if (Number_Sum_2_Old != Number_Sum_2)
+			{
+				Seg2_Display();
+				Number_Sum_2_Old = Number_Sum_2;
+			}
 			Seg2_flag = 0;
 		}
 
 		if (Seg1_flag == 1) // 150ms
 		{
-			if (Number_Sum_Old != Number_Sum)
+			if (Number_Sum_1_Old != Number_Sum_1)
 			{
 				Seg1_Display(); // 里面有Delay
-				Seg2_Display();
-				Number_Sum_Old = Number_Sum;
+				Number_Sum_1_Old = Number_Sum_1;
 			}
 			Seg1_flag = 0;
 		}
