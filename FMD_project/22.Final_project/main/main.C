@@ -1,48 +1,37 @@
-// Project: project.prj
+// Project: main.prj
 //  Device: FT61F0AX
 //  Memory: Flash 10KX14b, EEPROM 128X8b, SRAM 1KX8b
 //  Author:
 // Company:
 // Version:
-// PA0/1 分别接EC11旋转编码器BB/GA，PB3/4接数码管
+//    Date:
 //===========================================================
 //===========================================================
 #include "SYSCFG.h"
-#include "FT64F0AX.h"
+#include "FT61F0AX.h"
+#include "LED.h"
 #include "TDelay.h"
 #include "TM1650_IIC_1.h"
 #include "TM1650_IIC_2.h"
-#include "EC11.h"
-#include "IIC_SHT.h"
-#include "EEPROM.h"
-//===========================================================
 
-//***********************宏定义****************************
-#define uint unsigned int
-#define ulong unsigned long
-#define TM1650_WRITE_ADDR 0x48
-#define TM1650_CMD_DISP_ON 0x01 // 8�����ȣ�7����ʾ��������ʾʹ�ܣ��ֲ�����ˣ�
-#define TM1650_CMD_ADDR_BASE 0x68
-#define SCL_seg1 PB3
-#define SDA_seg1 PB4
+#define u8 unsigned char
+#define u16 unsigned int
+#define LED_Left PA1
+#define LED_Mid PA3
+#define LED_Right PA4
+#define Buzz PA5
 
-#define SCL_seg2 PA0
-#define SDA_seg2 PA1
-
-#define SDA_SHT PA4
-#define SCL_SHT PA5
-
-// 摄氏度/华氏度
-#define S 1
-#define H 0
-
-#define Key PA7
+// 变量定义
+volatile u16 Time_1ms_count = 0;
+volatile u8 Time_flag = 0;
+volatile u8 Seg_1_flag = 0;
+volatile u8 Seg_2_flag = 0;
 
 // 数码管变量定义
 unsigned char seg_code[] = {0x3F, 0x06, 0x5B, 0x4F, 0x66, 0x6D, 0x7D, 0x07, 0x7F, 0x6F}; // 0~9
 unsigned char led_place[] = {0x68, 0x6A, 0x6C, 0x6E};
 
-// 温度数码管1
+// 数码管1
 float Number_Sum_1 = 0.0f;
 float Number_Sum_1_Old = 0.0f;
 float Number_Sum_1_Abs = 0.0f; // 用于处理负数
@@ -52,7 +41,7 @@ int Number_Bai_1 = 0;
 int Number_Qian_1 = 0;
 char Number_Dec_1 = 0;
 
-// 湿度数码管2
+// 数码管2
 float Number_Sum_2 = 0.0f;
 float Number_Sum_2_Old = 0.0f;
 float Number_Sum_2_Abs = 0.0f; // 用于处理负数
@@ -62,41 +51,7 @@ int Number_Bai_2 = 0;
 int Number_Qian_2 = 0;
 char Number_Dec_2 = 0;
 
-// // LED_Breath
-// unsigned char LED_Count = 0;
-// unsigned char LED_PWM_Mid = 0;
-// unsigned char Breath_Flag1 = 0;
-
-// 按键扫描消抖
-
-// unsigned char key_statue_buffer = 0;
-// unsigned char key_statue = 0;
-unsigned int key_count = 0;
-unsigned char Key_state=0;
-unsigned Switch_Buf=0;
-// unsigned char PWM_count = 0;
-
-// Timer1
-unsigned int Debounce_count = 0;
-unsigned int Timer1_count1 = 0;
-unsigned int Timer1_count2 = 0;
-unsigned int Timer1_count3 = 0;
-
-// 三个不同时间的定时旗帜
-unsigned char flag_1s = 0;
-unsigned char S_or_H_flag = 0;
-unsigned char Seg1_flag = 0;
-
-// 温湿度
-//  1. 定义全局/局部缓冲区（6个元素，存传感器返回的6字节原始数据）
-unsigned int sht_data_buf[6] = {0}; // 缓冲区初始化清零
-// 2. 定义变量存最终实际温湿度（浮点型，保留2位小数足够）
-float sht_temperature = 0.0f; // 温度(℃)
-float sht_humidity = 0.0f;	  // 湿度(%RH)
-unsigned int temp_raw = 0;
-unsigned int humi_raw = 0;
-unsigned char MODE_SorH = 0;
-
+//===========================================================
 // Variable definition
 volatile char W_TMP @0x70;	 // ϵͳռ�ò�����ɾ�����޸�
 volatile char BSR_TMP @0x71; // ϵͳռ�ò�����ɾ�����޸�
@@ -137,87 +92,66 @@ void interrupt ISR(void)
 }
 void user_isr() // �û��жϺ���
 {
-	if (T1UIF)
+	if (T1UIE && T1UIF)
 	{
 		T1UIF = 1;
-		Timer1_count1++;
-		Timer1_count2++;
-		Timer1_count3++;
-		if (Timer1_count1 >= 20000) // 1s
+
+		if (Time_1ms_count > 999)
 		{
-			flag_1s = 1;
-			Timer1_count1 = 0;
+			Time_flag = 1;
+			Time_1ms_count = 0;
 		}
-		if (Timer1_count2 >= 20) // 没有用上
-		{
-			S_or_H_flag = 1;
-			Timer1_count2 = 0;
-		}
-		if (Timer1_count3 >= 3000) // 150ms
-		{
-			Seg1_flag = 1;
-			Timer1_count3 = 0;
-		}
+		Time_1ms_count++;
 	}
 }
 
-/*-------------------------------------------------
- * 函数名：POWER_INITIAL
- * 功能： 	 上电系统初始化
- * 输入：	 无
- * 输出： 	 无
- --------------------------------------------------*/
+void TIM1_Init(void) // 1ms
+{
+	PCKEN |= 0B00000010;
+	CKOCON = 0B00100000;
+	TCKSRC = 0B00000011;
+
+	TIM1CR1 = 0B10000101;
+	TIM1IER = 0B00000001;
+
+	TIM1ARRH = 0x7C; // �Զ�װ�ظ�8λH
+	TIM1ARRL = 0x90; // �Զ�װ�ص�8λH
+
+	INTCON = 0B11000000;
+}
+
+// 控制输入输出/若上拉的函数，根据实际情况调整，就不解耦了
 void POWER_INITIAL(void)
 {
-	OSCCON = 0B01100001; // 系统时钟选择为内部振荡器8MHz,分频比为1:1
-
-	PCKEN |= 0B00000010; // 使能定时器1
-
-	INTCON = 0; // 禁止所有中断
+	OSCCON = 0B01100001; // 8Mhz
+	INTCON |= 0x80;
 
 	PORTA = 0B00000000;
 	PORTB = 0B00000000;
 	PORTC = 0B00000000;
 
-	WPUA |= 0B11000000; // EC11_A/EC11_B（编码器）使能弱上拉 // 弱上拉的开关，0-关，1-开
+	WPUA = 0B00000000;
 	WPUB = 0B00000000;
 	WPUC = 0B00000000;
 
-	WPDA = 0B00000000; // 弱下拉的开关，0-关，1-开
+	WPDA = 0B00000000;
 	WPDB = 0B00000000;
 	WPDC = 0B00000000;
 
-	TRISA = 0B11000000; // 输入输出设置，0-输出，1-输入 修改为EC11_A、EC11_B为输入
-	TRISB = 0B00000010; // PB1输入
+	TRISA = 0B00000000;
+	TRISB = 0B00000000;
 	TRISC = 0B00000000;
 
-	PSRC0 = 0B11111111; // 源电流设置最大
-	PSRC1 = 0B11111111;
-	PSRC2 = 0B00001111;
+	PSRC0 = 0B00000000; // 源电流开到最小
+	PSRC1 = 0B00000000;
+	PSRC2 = 0B00000000;
 
-	PSINK0 = 0B11111111; // 灌电流设置最大
-	PSINK1 = 0B11111111;
-	PSINK2 = 0B00000011;
+	PSINK0 = 0B00000000; // 灌电流开到最小
+	PSINK1 = 0B00000000;
+	PSINK2 = 0B00000000;
 
-	ANSELA = 0B00000000; // 设置对应的IO为数字IO
+	ANSELA = 0B00000000;
 }
-
-void TIM1_INITIAL(void)
-{
-	PCKEN |= 0B00000010;  // ???TIMER1??????
-	CKOCON = 0B00100000;  // Timer1?????????????λ4ns???
-	TCKSRC |= 0B00000011; // Timer1?????HIRC??2???
-
-	TIM1CR1 = 0B10000101; // ???????????????????
-
-	TIM1IER = 0B00000001; // ?????????ж?
-
-	TIM1ARRH = 0x06; // ???????8
-	TIM1ARRL = 0x40; // ???????8λ  50us ??????ж?
-
-	INTCON = 0B11000000; // ??????ж???????ж?
-}
-
 void Seg1_Display(void) // 正负数（最大99）
 {
 	// 数据处理，显示在数码管
@@ -312,113 +246,23 @@ void Seg2_Display(void) // 正负数（最大99）
 	}
 }
 
-
 void main(void)
 {
-	POWER_INITIAL(); // �0�3�0�1�1�7�1�7�0�3�1�7�1�7
-	TIM1_INITIAL();
+	POWER_INITIAL();
+	TIM1_Init();
 	TM1650_1_Init();
 	TM1650_2_Init();
-	TM1650_1_Set(led_place[3], 0b00111001); // 能显示，测试
-	TM1650_2_Set(led_place[3], 0b01110110);
-	// EC11_State_Old = EC11_Read_State();
+	Buzz = 0;
+	LED_Buzz_turn_on();
+	TM1650_1_Set(led_place[1], seg_code[1]);
+	TM1650_2_Set(led_place[2], seg_code[2]);
 	while (1)
 	{
-
-		if (flag_1s == 1) // 1s进来执行一次
+		if (Time_flag == 1)
 		{
-			SHT_process();
-			// 数据处理
-			//  4. 拼接16位原始数据（高字节+低字节，SHT系列温湿度均为16位数据）
-			temp_raw = (sht_data_buf[0] << 8) | sht_data_buf[1]; // 温度原始值（第0、1字节）
-			humi_raw = (sht_data_buf[3] << 8) | sht_data_buf[4]; // 湿度原始值（第3、4字节）
-			// （可选）CRC校验：对比sht_data_buf[2]（温度CRC）、sht_data_buf[5]（湿度CRC），提升数据可靠性
-
-			// 摄氏度
-			if (MODE_SorH == S)
-			{
-				sht_temperature = (float)(temp_raw * 175.0f / 65535.0f) - 45.0f;
-			} // 温度公式：-45~125℃
-			// 华氏度
-			if (MODE_SorH == H)
-			{
-				sht_temperature = (float)(-49.0f + 315.0f * (temp_raw / 65535.0f));
-			}
-
-			// 赋值给显示变量
-			Number_Sum_1 = sht_temperature;
-
-			//湿度
-			sht_humidity = (float)(humi_raw * 100.0f / 65535.0f); // 湿度公式：0~100%RH
-			Number_Sum_2 = (sht_humidity > 100) ? 100.0f : sht_humidity; // 裁剪超范围值
-			flag_1s = 0;
-		}
-		if (S_or_H_flag == 1) // 1ms
-		{
-			if (Key ==0)
-			{
-				switch (Key_state)
-				{
-				case 0:
-					if (Key ==0) // 检测到一个按下瞬间
-					{
-						key_count++;
-						if (key_count > 20)
-						{
-							key_count=0;
-							Key_state = 1;
-						}
-					}
-					else
-					{
-						break;
-					}
-					break;
-				case 1:
-					key_count++;
-					if (key_count > 50)
-					{
-						key_count = 0;
-						Key_state = 2;
-					}
-					break;
-				case 2:
-					if (Key == 0)
-					{
-						Switch_Buf+= 50;
-						Key_state=1;
-						if(Switch_Buf>=2000)
-						{
-							MODE_SorH=MODE_SorH^1;
-							EEPROM_Write(0x01,MODE_SorH);
-							Switch_Buf=0;
-						}
-					}
-					else if (Key == 1) // 检测到松手
-					{
-						Key_state = 0;
-						key_count=0;
-						break;
-					}
-					break;
-				}
-			}
-			S_or_H_flag = 0;
-		}
-
-		if (Seg1_flag == 1) // 150ms
-		{
-			if (Number_Sum_1_Old != Number_Sum_1)
-			{
-				Seg1_Display(); // 里面有Delay
-				Number_Sum_1_Old = Number_Sum_1;
-			}
-			if (Number_Sum_2_Old != Number_Sum_2)
-			{
-				Seg2_Display();
-				Number_Sum_2_Old = Number_Sum_2;
-			}
-			Seg1_flag = 0;
+			LED_Buzz_turn_off();
+			Buzz = 1;
+			Time_flag = 0;
 		}
 	}
 }
