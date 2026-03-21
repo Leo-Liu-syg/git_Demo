@@ -149,8 +149,10 @@ void main(void)
 	{
 		DelayMs(500);
 		adcData = GET_ADC_DATA(0);
-		theVoltage = (unsigned long)adcData * 2 * 1000 / 4096;
-		Number_Sum = theVoltage; // 提取4位数
+		// 计算电压（全程整数运算，避免浮点）
+		theVoltage = ((unsigned long)adcData * 2UL * 1000UL) / 4096UL;
+		// 关键：强制将浮点变量转为整数
+		Number_Sum_2 = (float)theVoltage;
 		Number_Ge = Number_Sum / 1000;
 		Number_Shi = (Number_Sum / 100) % 10;
 		Number_Bai = (Number_Sum / 10) % 10;
