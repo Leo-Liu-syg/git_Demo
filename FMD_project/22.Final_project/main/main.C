@@ -32,22 +32,29 @@
 // 中断内变量定义
 volatile u16 Start_Count = 0;
 
-volatile u8 Start_Flag = 0;
+u8 Start_Flag = 0;
 
 volatile u16 volatile_steady_count = 0;
-volatile u8 volatile_steady_Flag = 0;
+u8 volatile_steady_Flag = 0;
 
 volatile u16 LED_Flash_Count = 0;
-volatile u8 LED_Flash_Flag = 0;
-volatile u8 LED_Flash_Start_Flag = 0;
+u8 LED_Flash_Flag = 0;
+u8 LED_Flash_Start_Flag = 0;
 
-volatile u8 Warm_ready = 0;
+volatile u8 Calibration = 0;
+volatile u8 standard_work = 0;
 
 volatile u16 Count_10s = 0;
-volatile u8 Flag_10s = 0;
+u8 Flag_10s = 0;
 
-volatile u8 Seg_2_Fresh_Flag = 0;
+u8 Seg_2_Fresh_Flag = 0;
 volatile u16 Seg_2_Fresh_Count = 0;
+
+volatile u16 Count_30s = 0;
+u8 Flag_30s = 0;
+
+volatile u8 Count_200ms = 0;
+u8 Flag_200ms = 0;
 
 // 数码管变量定义
 extern unsigned char seg_code[] = {0x3F, 0x06, 0x5B, 0x4F, 0x66, 0x6D, 0x7D, 0x07, 0x7F, 0x6F}; // 0~9
@@ -80,11 +87,13 @@ extern unsigned int humi_raw = 0;
 extern volatile unsigned char MODE_SorH = 0;
 
 // voltage
-unsigned int adcData = 0;
-unsigned long theVoltage = 0;
-unsigned long temp_num_2 = 0;
-u8 V_marked = 0;
-u8 V_current = 0;
+extern volatile unsigned int adcData = 0;
+extern volatile unsigned long theVoltage = 0;
+extern volatile unsigned long temp_num_2 = 0;
+extern volatile unsigned long V_marked = 0;
+extern volatile unsigned long V_current = 0;
+
+volatile float delta = 0;
 
 //-------------EEPROM模块变量----------
 unsigned char EEPROM_H = 0;
@@ -136,6 +145,8 @@ void user_isr() // �û��жϺ���
 		Seg_2_Fresh_Count++;
 		volatile_steady_count++;
 		Count_10s++;
+		Count_30s++;
+		Count_200ms++;
 		if (LED_Flash_Count > 500)
 		{
 			LED_Flash_Flag = 1;
@@ -159,6 +170,16 @@ void user_isr() // �û��жϺ���
 		{
 			Count_10s = 0;
 			Flag_10s = 1;
+		}
+		if (Count_30s >= 30000)
+		{
+			Count_30s = 0;
+			Flag_30s = 1;
+		}
+		if (Count_200ms >= 200)
+		{
+			Count_200ms = 0;
+			Flag_200ms = 1;
 		}
 	}
 }
@@ -226,85 +247,204 @@ void main(void)
 	Number_Sum_2 = 99;
 	while (1)
 	{
-		switch (Warm_ready) // 预热结束后进入状态机
+		// switch (Calibration)
+		// {
+		// case 0:													  // 预热状态
+		// 	if (LED_Flash_Flag == 1 && LED_Flash_Start_Flag == 1) // 预热灯
+		// 	{
+		// 		LED_All_Shinning();
+		// 		LED_Flash_Flag = 0;
+		// 	}
+		// 	if (Start_Flag == 1) // 1s执行一次
+		// 	{
+		// 		LED_Flash_Start_Flag = 1;
+		// 		Buzz = 1;
+		// 		SHT_process();
+		// 		SHT_Data_process();
+		// 		Number_Sum_1 = sht_temperature;
+		// 		Seg1_Display();
+		// 		if (Number_Sum_2 > 0 && Calibration == 0)
+		// 		{
+		// 			Number_Sum_2--;
+		// 			Seg2_Display();
+		// 		}
+		// 		if (Number_Sum_2 <= 90 && Calibration == 0) // 倒计时结束
+		// 		{
+		// 			Calibration = 1;
+		// 			break;
+		// 		}
+		// 		Start_Flag = 0;
+		// 	}
+		// 	break;
+		// case 1: // 等待电压到达1~2v
+		// 	if (LED_Left == 1)
+		// 	{
+		// 		LED_turn_on();
+		// 	}
+		// 	Seg2_ADC_Data_process();
+		// 	if (Seg_2_Fresh_Flag == 1) // 0.5s更新一次
+		// 	{
+		// 		Seg2_Show_Voltage();
+		// 		Seg_2_Fresh_Flag = 0;
+		// 	}
+		// 	if (temp_num_2 >= 1000 && temp_num_2 < 2000)
+		// 	{
+		// 		V_marked = temp_num_2;
+		// 		Calibration = 2;
+		// 		break;
+		// 	}
+		// 	esle if (temp_num_2 > 2000) // 错误溢出，蜂鸣器报警提示
+		// 	{
+		// 		Buzz = 0;
+		// 		Calibration = 0;
+		// 		break;
+		// 	}
+		// 	break;
+		// case 2: // 记录当前电压和标定电压差值
+		// 	LED_mid_right_on();
+		// 	Seg2_ADC_Data_process();
+		// 	if (Seg_2_Fresh_Flag == 1) // 0.5s更新一次
+		// 	{
+		// 		Seg2_Show_Voltage();
+		// 		Seg_2_Fresh_Flag = 0;
+		// 	}
+		// 	if (Flag_10s == 1) // 10s进来一次,
+		// 	{
+		// 		V_current = temp_num_2;
+		// 		if (V_current > V_marked)
+		// 		{
+		// 			EEPROM_H = (V_current - V_marked) / 256;
+		// 			EEPROM_L = (V_current - V_marked) % 256;
+		// 			EEPROM_Write(0x00, EEPROM_H);
+		// 			EEPROM_Write(0x01, EEPROM_L);
+		// 		}
+		// 		Flag_10s = 0;
+		// 		LED_Left_shinning();
+		// 		break;
+		// 	}
+		// 	break;
+		// default:
+		// 	break;
+		// }
+		// // 下面是正常工作的代码
+		switch (standard_work)
 		{
-		case 0:
-			if (LED_Flash_Flag == 1 && LED_Flash_Start_Flag == 1) // 预热灯
-			{
-				LED_All_Shinning();
-				LED_Flash_Flag = 0;
-			}
-			if (Start_Flag == 1)//1s执行一次
+		case 0: // 上电
+			Buzz = 0;
+			LED_turn_on();
+			if (Start_Flag == 1) // 1s执行一次后跳出
 			{
 				LED_Flash_Start_Flag = 1;
 				Buzz = 1;
+				Number_Sum_2 = 99;
+				standard_work = 1; // 倒计时结束,状态机进入下一步
+				Start_Flag = 0;
+				break;
+			}
+			break;
+		case 1: // 2.1预热状态
+			// 数码管1显示温度
+			if (Start_Flag == 1) // 1s执行一次
+			{
 				SHT_process();
 				SHT_Data_process();
 				Number_Sum_1 = sht_temperature;
 				Seg1_Display();
-				if (Number_Sum_2 > 0 && Warm_ready == 0)
+				if (Number_Sum_2 > 0)
 				{
 					Number_Sum_2--;
 					Seg2_Display();
 				}
-
-				if (Number_Sum_2 <= 90 && Warm_ready == 0) // 倒计时结束
+				if (Number_Sum_2 <= 90) // 倒计时结束,状态机进入下一步
 				{
-					Warm_ready = 1;
+					Seg2_ADC_Data_process();
+					Seg2_Show_Voltage();
+					V_marked = temp_num_2; // 标定v0
+					standard_work = 2;
 					break;
 				}
 				Start_Flag = 0;
 			}
-			break;
-		case 1:
-			if (LED_Left == 1)
+			if (LED_Flash_Flag == 1 && LED_Flash_Start_Flag == 1) // 预热灯0.5s闪烁
 			{
-				LED_turn_on();
-			}
-			adcData = GET_ADC_DATA(0);
-			// 计算电压（全程整数运算，避免浮点）
-			theVoltage = ((unsigned long)adcData * 2UL * 1000UL) / 4096UL;
-			// 保留 Number_Sum_2 为 float 类型
-			Number_Sum_2 = (float)theVoltage;
-			// 关键：先转成无符号长整型临时变量，用它来做取模运算
-			unsigned long temp_num_2 = (unsigned long)Number_Sum_2;
-			// 用临时变量 temp_num_2 做数位提取（注意变量名要一致！）
-			Number_Ge_2 = temp_num_2 / 1000;
-			Number_Shi_2 = (temp_num_2 / 100) % 10;
-			Number_Bai_2 = (temp_num_2 / 10) % 10;
-			Number_Qian_2 = temp_num_2 % 10;
-			if (Seg_2_Fresh_Flag == 1) // 0.5s更新一次
-			{
-				TM1650_2_Set(led_place[0], seg_code[Number_Ge_2] + 0x80);
-				TM1650_2_Set(led_place[1], seg_code[Number_Shi_2]);
-				TM1650_2_Set(led_place[2], seg_code[Number_Bai_2]);
-				TM1650_2_Set(led_place[3], seg_code[Number_Qian_2]);
-				Seg_2_Fresh_Flag = 0;
-			}
-			if (temp_num_2 >= 1000 && temp_num_2 < 2000)
-			{
-				V_marked = temp_num_2;
-				Warm_ready = 2;
-				break;
+				LED_Mid = ~LED_Mid;
+				LED_Flash_Flag = 0;
 			}
 			break;
-		case 2:
-			LED_mid_right_on();
-			if (Flag_10s == 1) // 10s进来一次
+		case 2:						 // 2.3正常监测
+			if (LED_Flash_Flag == 1) // 0.5s
 			{
-				LED_Left_on();
+				// seg1显示温度
+				SHT_process();
+				SHT_Data_process();
+				Number_Sum_1 = sht_temperature;
+				Seg1_Display();
+				// seg2显示电压
+				Seg2_ADC_Data_process();
+				Seg2_Show_Voltage();
 				V_current = temp_num_2;
-				if (V_current > V_marked)
+				LED_Mid = 0; // 绿灯常亮
+				// 先算差值（强转成 float，避免溢出）
+				delta = (float)V_current - (float)V_marked;
+				// 再判断
+				if (delta > 0.0f && (float)(V_current - V_marked) <= 0.6f * (float)V_marked)
 				{
-					EEPROM_H = (V_current - V_marked) / 256;
-					EEPROM_L = (V_current - V_marked) % 256;
-					EEPROM_Write(0x00, EEPROM_H);
-					EEPROM_Write(0x01, EEPROM_L);
+					// 30s闪烁
+					if (Flag_30s == 1)
+					{
+						LED_Right = 0;
+						Flag_30s = 0;
+					}
+					if (LED_Right == 0 && Count_30s >= 100)
+					{
+						LED_Right = ~LED_Right;
+						Count_30s = 0;
+					}
 				}
-				Flag_10s = 0;
-				LED_Left_off();
+				else if((float)(V_current - V_marked) > 0.6f * (float)V_marked)
+				{
+					Buzz = 0;
+					LED_turn_on();
+					standard_work = 3;
+					break;
+				}
+				LED_Flash_Flag = 0;
+			}
+			break;
+		case 3:						 // 报警状态
+			if (LED_Flash_Flag == 1) // 0.5s
+			{
+				SHT_process();
+				SHT_Data_process();
+				Number_Sum_1 = sht_temperature;
+				Seg1_Display();
+				// seg2显示电压
+				Seg2_ADC_Data_process();
+				Seg2_Show_Voltage();
+				V_current = temp_num_2;
+				LED_Mid = 0; // 绿灯常亮
+				// 先算差值（强转成 float，避免溢出）
+				delta = (float)V_current - (float)V_marked;
+				LED_Flash_Flag = 0;
+			}
+			if (delta > 0.0f && (float)(V_current - V_marked) <= 0.55f * (float)V_marked)
+			{
+				Buzz = 1;
+				standard_work = 2;
 				break;
 			}
+			if (Flag_200ms == 1)
+			{
+				LED_Left = 0;
+				Flag_200ms=0;
+			}
+			if (Count_200ms >= 50 && LED_Left == 0)
+			{
+				LED_Left = ~LED_Left;
+				Count_200ms = 0;
+			}
+			break;
+		default:
 			break;
 		}
 	}

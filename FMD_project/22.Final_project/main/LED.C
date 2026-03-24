@@ -54,3 +54,8 @@ void LED_Left_off(void)
 	LED_Left = 1;
 	NOP();
 }
+//红灯闪烁
+void LED_Left_shinning(void)
+{
+	LED_Left = ~LED_Left;
+}

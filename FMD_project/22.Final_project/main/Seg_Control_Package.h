@@ -5,5 +5,7 @@ void Seg1_Display(void);
 void Seg2_Display(void);
 void Seg1_Init_Ready(void);
 void Seg2_Init_Ready(void);
+void Seg2_ADC_Data_process(void);
+void Seg2_Show_Voltage(void);
 
 #endif

@@ -3,6 +3,7 @@
 #include "TDelay.h"
 #include "TM1650_IIC_1.h"
 #include "TM1650_IIC_2.h"
+#include "ADC.h"
 
 #define S 0
 #define H 1
@@ -31,6 +32,12 @@ int Number_Bai_2 = 0;
 int Number_Qian_2 = 0;
 char Number_Dec_2 = 0;
 
+// voltage
+volatile unsigned int adcData = 0;
+volatile unsigned long theVoltage = 0;
+volatile unsigned long temp_num_2 = 0;
+volatile unsigned long V_marked = 0;
+volatile unsigned long V_current = 0;
 
 void Seg1_Display(void) // 正负数（最大99）
 {
@@ -79,10 +86,9 @@ void Seg1_Display(void) // 正负数（最大99）
 	}
 }
 
+// 温度数据处理，显示在数码管
 void Seg2_Display(void) // 正负数（最大99）
 {
-	// 数据处理，显示在数码管
-
 	if (Number_Sum_2 >= 0)
 	{
 		Number_Ge_2 = ((int)Number_Sum_2) % 10;
@@ -142,3 +148,26 @@ void Seg2_Init_Ready(void)
 	TM1650_2_Set(led_place[3], 0xFF); // H:0b01110110
 }
 
+void Seg2_ADC_Data_process(void)
+{
+	adcData = GET_ADC_DATA(0);
+	// 计算电压（全程整数运算，避免浮点）
+	theVoltage = ((unsigned long)adcData * 2UL * 1000UL) / 4096UL;
+	// 保留 Number_Sum_2 为 float 类型
+	Number_Sum_2 = (float)theVoltage;
+	// 关键：先转成无符号长整型临时变量，用它来做取模运算
+	temp_num_2 = (unsigned long)Number_Sum_2;
+	// 用临时变量 temp_num_2 做数位提取
+	Number_Ge_2 = temp_num_2 / 1000;
+	Number_Shi_2 = (temp_num_2 / 100) % 10;
+	Number_Bai_2 = (temp_num_2 / 10) % 10;
+	Number_Qian_2 = temp_num_2 % 10;
+}
+
+void Seg2_Show_Voltage(void)
+{
+	TM1650_2_Set(led_place[0], seg_code[Number_Ge_2] + 0x80);
+	TM1650_2_Set(led_place[1], seg_code[Number_Shi_2]);
+	TM1650_2_Set(led_place[2], seg_code[Number_Bai_2]);
+	TM1650_2_Set(led_place[3], seg_code[Number_Qian_2]);
+}
