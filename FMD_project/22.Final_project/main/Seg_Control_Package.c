@@ -4,10 +4,12 @@
 #include "TM1650_IIC_1.h"
 #include "TM1650_IIC_2.h"
 #include "ADC.h"
+#include "IIC_SHT.h"
 
+// 温湿度
 #define S 0
 #define H 1
-
+extern volatile unsigned char MODE_SorH = 0;
 // 数码管变量定义
 unsigned char seg_code[] = {0x3F, 0x06, 0x5B, 0x4F, 0x66, 0x6D, 0x7D, 0x07, 0x7F, 0x6F}; // 0~9
 unsigned char led_place[] = {0x68, 0x6A, 0x6C, 0x6E};
@@ -53,14 +55,28 @@ void Seg1_Display(void) // 正负数（最大99）
 			TM1650_1_Set(led_place[0], 0);
 			TM1650_1_Set(led_place[1], seg_code[Number_Ge_1] + 0x80);
 			TM1650_1_Set(led_place[2], seg_code[Number_Dec_1]);
-			TM1650_1_Set(led_place[3], 0b00111001);
+			if (MODE_SorH == S)
+			{
+				TM1650_1_Set(led_place[3], 0b00111001);
+			}
+			else
+			{
+				TM1650_1_Set(led_place[3], 0b01110110);
+			}
 		}
 		else if (Number_Sum_1 >= 10 && Number_Sum_1 < 100)
 		{
 			TM1650_1_Set(led_place[0], seg_code[Number_Shi_1]);
 			TM1650_1_Set(led_place[1], seg_code[Number_Ge_1] + 0x80);
 			TM1650_1_Set(led_place[2], seg_code[Number_Dec_1]);
-			TM1650_1_Set(led_place[3], 0b00111001);
+			if (MODE_SorH == S)
+			{
+				TM1650_1_Set(led_place[3], 0b00111001);
+			}
+			else
+			{
+				TM1650_1_Set(led_place[3], 0b01110110);
+			}
 		}
 	}
 	if (Number_Sum_1 < 0)
@@ -74,14 +90,28 @@ void Seg1_Display(void) // 正负数（最大99）
 			TM1650_1_Set(led_place[0], 0x40); // 负号
 			TM1650_1_Set(led_place[1], seg_code[Number_Ge_1] + 0x80);
 			TM1650_1_Set(led_place[2], seg_code[Number_Dec_1]);
-			TM1650_1_Set(led_place[3], 0b00111001);
+			if (MODE_SorH == S)
+			{
+				TM1650_1_Set(led_place[3], 0b00111001);
+			}
+			else
+			{
+				TM1650_1_Set(led_place[3], 0b01110110);
+			}
 		}
 		else if (Number_Sum_1_Abs >= 10 && Number_Sum_1_Abs < 100)
 		{
 			TM1650_1_Set(led_place[0], 0x40);
 			TM1650_1_Set(led_place[1], seg_code[Number_Shi_1]);
 			TM1650_1_Set(led_place[2], seg_code[Number_Ge_1]);
-			TM1650_1_Set(led_place[3], 0b00111001); // H:0b01110110
+			if (MODE_SorH == S)
+			{
+				TM1650_1_Set(led_place[3], 0b00111001);
+			}
+			else
+			{
+				TM1650_1_Set(led_place[3], 0b01110110);
+			} // H:0b01110110
 		}
 	}
 }

@@ -48,7 +48,7 @@ void interrupt ISR(void)
     NOP;
 #endasm;
 
-    // timer1ÖÐ¶Ï
+    // timer1ï¿½Ð¶ï¿½
     if (T1UIF)
     {
         T1UIF = 1;
@@ -59,7 +59,7 @@ void interrupt ISR(void)
 void POWER_INITIAL(void)
 {
     OSCCON = 0B01100001; // ???16MHz???????1:1
-    INTCON = 0;          // ????????§Ø?
+    INTCON = 0;          // ????????ï¿½ï¿½?
 
     // ********** ???GPIO????? **********
     PORTA = 0B00000000;
@@ -79,7 +79,7 @@ void POWER_INITIAL(void)
     TRISA |= 0B10000011;
     WPUA |= 0B10000011; // ?????????????????????????
 
-    // ********** ??§Ö??????? **********
+    // ********** ??ï¿½ï¿½??????? **********
     PSRC0 = 0B11111111; // ????????
     PSRC1 = 0B11111111;
     PSRC2 = 0B00001111;
@@ -92,12 +92,12 @@ void POWER_INITIAL(void)
 void TIM2_INITIAL(void)
 {
     PCKEN |= 0B00000100; // ???TIMER2??????
-    CKOCON = 0B00100000; // Timer2?????????????¦Ë4ns???
+    CKOCON = 0B00100000; // Timer2?????????????ï¿½ï¿½4ns???
     TCKSRC = 0B00110000; // Timer2?????HIRC??2???
 
     TIM2CR1 = 0B10000101; // ???????????????????
 
-    TIM2IER = 0B00000000; // ????????§Ø?
+    TIM2IER = 0B00000000; // ????????ï¿½ï¿½?
 
     TIM2SR1 = 0B00000000;
     TIM2SR2 = 0B00000000;
@@ -108,7 +108,7 @@ void TIM2_INITIAL(void)
     TIM2CCMR2 = 0B01101000; // ?????CH2??????????PWM??1
     TIM2CCMR3 = 0B00000000;
 
-    TIM2CCER1 = 0B00110011; // ???1??2?????????????§¹
+    TIM2CCER1 = 0B00110011; // ???1??2?????????????ï¿½ï¿½
     TIM2CCER2 = 0B00000000;
     //*********AI ???????
     // TIM2CCMR1 = 0B01101010; // 01101010??T2OC1M=110??PWM1????T2OC1PE=1???????
@@ -117,14 +117,14 @@ void TIM2_INITIAL(void)
     TIM2CNTRH = 0B00000000;
     TIM2CNTRL = 0B00000000;
 
-    TIM2ARRH = (PWM_ARR >> 8); // ???????8¦Ë03H
-    TIM2ARRL = PWM_ARR & 0xFF; // ???????8¦Ëe8H
+    TIM2ARRH = (PWM_ARR >> 8); // ???????8ï¿½ï¿½03H
+    TIM2ARRL = PWM_ARR & 0xFF; // ???????8ï¿½ï¿½e8H
 
-    TIM2CCR1H = 0; // ?????1?????????8¦Ë01H
-    TIM2CCR1L = 0; // ?????1?????????8¦ËF4H
+    TIM2CCR1H = 0; // ?????1?????????8ï¿½ï¿½01H
+    TIM2CCR1L = 0; // ?????1?????????8ï¿½ï¿½F4H
 
-    TIM2CCR2H = 0x01; // ?????2?????????8¦Ë01H
-    TIM2CCR2L = 0xf4; // ?????2?????????8¦ËF4H
+    TIM2CCR2H = 0x01; // ?????2?????????8ï¿½ï¿½01H
+    TIM2CCR2L = 0xf4; // ?????2?????????8ï¿½ï¿½F4H
 
     TIM2CCR3H = 0B00000000;
     TIM2CCR3L = 0B00000000;
@@ -132,22 +132,22 @@ void TIM2_INITIAL(void)
 void TIM1_INITIAL(void)
 {
     PCKEN |= 0B00000010;  // ???TIMER1??????
-    CKOCON = 0B00100000;  // Timer1?????????????¦Ë4ns???
+    CKOCON = 0B00100000;  // Timer1?????????????ï¿½ï¿½4ns???
     TCKSRC |= 0B00000011; // Timer1?????HIRC??2???
 
     TIM1CR1 = 0B10000101; // ???????????????????
 
-    TIM1IER = 0B00000001; // ?????????§Ø?
+    TIM1IER = 0B00000001; // ?????????ï¿½ï¿½?
 
     TIM1ARRH = 0x7C; // ???????8
-    TIM1ARRL = 0xFF; // ???????8¦Ë  1ms ??????§Ø?
+    TIM1ARRL = 0xFF; // ???????8ï¿½ï¿½  1ms ??????ï¿½ï¿½?
 
-    INTCON = 0B11000000; // ??????§Ø???????§Ø?
+    INTCON = 0B11000000; // ??????ï¿½ï¿½???????ï¿½ï¿½?
 }
 
 unsigned int ComValue1 = 0;
 unsigned int ComValue1_buffer = 0;
-unsigned char breath_Flag1 = 0; // 0:²»¶¯ 1:Ôö¼ÓÕ¼¿Õ±È 2:¼õÉÙÕ¼¿Õ±È
+unsigned char breath_Flag1 = 0; // 0:ï¿½ï¿½ï¿½ï¿½ 1:ï¿½ï¿½ï¿½ï¿½Õ¼ï¿½Õ±ï¿½ 2:ï¿½ï¿½ï¿½ï¿½Õ¼ï¿½Õ±ï¿½
 unsigned char breath_count = 0;
 unsigned char breath_mode = 0;
 void berath_control()
@@ -163,7 +163,7 @@ void berath_control()
             ComValue1_buffer = ComValue1;
         }   
     }
-    // Ã¿200msÔö¼ÓÒ»´ÎÕ¼¿Õ±È
+    // Ã¿200msï¿½ï¿½ï¿½ï¿½Ò»ï¿½ï¿½Õ¼ï¿½Õ±ï¿½
     else if (breath_Flag1 == 1)
     {
         breath_count++;
@@ -182,7 +182,7 @@ void berath_control()
             TIM2CCR1H = ComValue1 / 256;
         }
     }
-    // Ã¿200ms¼õÉÙÒ»´ÎÕ¼¿Õ±È
+    // Ã¿200msï¿½ï¿½ï¿½ï¿½Ò»ï¿½ï¿½Õ¼ï¿½Õ±ï¿½
     else if (breath_Flag1 == 2)
     {
         breath_count++;
@@ -203,59 +203,59 @@ void berath_control()
     }
 }
 
-unsigned char key_statue_buffer = 0;
-unsigned char key_statue = 0;
+unsigned char key_state_buffer = 0;
+unsigned char key_state = 0;
 unsigned char key_count = 0;
 void Key_Scan_NonBlock(void)
 {
-    /*°´¼ü¼ì²â*/
-    // Á½¸ö°´¼ü¶¼Ã»°´ÏÂ
+    /*ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½*/
+    // ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ã»ï¿½ï¿½ï¿½ï¿½
     if (PA0 && PA1)
     {
-        key_statue_buffer = 0;
+        key_state_buffer = 0;
     }
-    // Ö»°´ÏÂPA0
+    // Ö»ï¿½ï¿½ï¿½ï¿½PA0
     else if (!PA0 && PA1)
     {
-        key_statue_buffer = 1;
+        key_state_buffer = 1;
     }
-    // Ö»°´ÏÂPA1
+    // Ö»ï¿½ï¿½ï¿½ï¿½PA1
     else if (PA0 && !PA1)
     {
-        key_statue_buffer = 2;
+        key_state_buffer = 2;
     }
     else if ((!PA0 && !PA1))
     {
-        key_statue_buffer = 3;
+        key_state_buffer = 3;
     }
 
-    if (key_statue != key_statue_buffer)
+    if (key_state != key_state_buffer)
     {
         key_count++;
         if (key_count >= 20)
         {
             key_count = 0;
-            key_statue = key_statue_buffer;
-            /*°´¼ü×´Ì¬ÇÐ»»´¦Àí*/
-            if (key_statue == 0)
+            key_state = key_state_buffer;
+            /*ï¿½ï¿½ï¿½ï¿½×´Ì¬ï¿½Ð»ï¿½ï¿½ï¿½ï¿½ï¿½*/
+            if (key_state == 0)
             {
                 // PA4 = 1;
                 // PA5 = 1;
                 breath_Flag1 = 0;
             }
-            else if (key_statue == 1)
+            else if (key_state == 1)
             {
                 // PA4 = 0;
                 // PA5 = 1;
                 breath_Flag1 = 1;
             }
-            else if (key_statue == 2)
+            else if (key_state == 2)
             {
                 // PA4 = 1;
                 // PA5 = 0;
                 breath_Flag1 = 2;
             }
-            else if (key_statue == 3)
+            else if (key_state == 3)
             {
                 // PA4 = 0;
                 // PA5 = 0;
@@ -275,7 +275,7 @@ unsigned char EEPROMread(unsigned char EEAddr)
     unsigned char ReEEPROMread;
     while (GIE) // ???GIE?0
     {
-        GIE = 0; // ????????????§Ø?
+        GIE = 0; // ????????????ï¿½ï¿½?
         NOP();
         NOP();
     }
@@ -329,7 +329,7 @@ void EEPROMwrite(unsigned char EEAddr, unsigned char Data)
 {
     while (GIE) // ???GIE?0
     {
-        GIE = 0; // §Õ??????????§Ø?
+        GIE = 0; // ï¿½ï¿½??????????ï¿½ï¿½?
         NOP();
         NOP();
     }
@@ -338,7 +338,7 @@ void EEPROMwrite(unsigned char EEAddr, unsigned char Data)
 
     CFGS = 0;
     EEPGD = 0;
-    WREN = 1; // §Õ???
+    WREN = 1; // ï¿½ï¿½???
     EEIF = 0;
 
     Unlock_Flash(); // Flash ????????????
@@ -347,7 +347,7 @@ void EEPROMwrite(unsigned char EEAddr, unsigned char Data)
     NOP();
     NOP();
     while (WR)
-        ; // ???EEPROM§Õ?????
+        ; // ???EEPROMï¿½ï¿½?????
     WREN = 0;
     GIE = 1;
 }
@@ -364,7 +364,7 @@ void main(void)
     TIM2_INITIAL();
     TIM1_INITIAL();
 
-    // ÓÐÐ´¹ýEEPROM
+    // ï¿½ï¿½Ð´ï¿½ï¿½EEPROM
     if(EEPROMread(EEPROM_FLAG_ADDR) == 0x55)
     {
         TIM2CCR1L = EEPROMread(EEPROM_FLAG_DATAL);
@@ -376,7 +376,7 @@ void main(void)
         if (flag_1ms)
         {
             flag_1ms = 0;
-            Key_Scan_NonBlock(); // °´¼ü´¦Àí
+            Key_Scan_NonBlock(); // ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
             berath_control();
         }
     }
